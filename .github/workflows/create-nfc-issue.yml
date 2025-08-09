@@ -1,0 +1,414 @@
+name: Create NFC Issue Workflow
+
+on:
+  repository_dispatch:
+    types: [create_nfc_issue]
+  workflow_dispatch:
+    inputs:
+      nfc_tag_id:
+        description: 'NFC Tag ID'
+        required: true
+        type: string
+      issue_title:
+        description: 'Issue Title'
+        required: true
+        type: string
+      issue_body:
+        description: 'Issue Body'
+        required: true
+        type: string
+      issue_type:
+        description: 'Issue Type'
+        required: true
+        type: choice
+        options:
+          - emergency
+          - lost-pet
+          - medical-emergency
+          - geofence-alert
+          - contact-update
+          - medical-update
+          - location-update
+          - new-registration
+          - care-reminder
+        default: 'location-update'
+      priority:
+        description: 'Priority Level'
+        required: false
+        type: choice
+        options:
+          - low
+          - medium
+          - high
+          - urgent
+        default: 'medium'
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  MONGODB_CONNECTION_STRING: ${{ secrets.MONGODB_CONNECTION_STRING }}
+
+jobs:
+  create_issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract issue data
+        id: issue_data
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "nfc_tag_id=${{ github.event.client_payload.nfc_tag_id }}" >> $GITHUB_OUTPUT
+            echo "issue_title=${{ github.event.client_payload.title }}" >> $GITHUB_OUTPUT
+            echo "issue_body=${{ github.event.client_payload.body }}" >> $GITHUB_OUTPUT
+            echo "issue_type=${{ github.event.client_payload.issue_type }}" >> $GITHUB_OUTPUT
+            echo "priority=${{ github.event.client_payload.priority }}" >> $GITHUB_OUTPUT
+            echo "labels=${{ github.event.client_payload.labels }}" >> $GITHUB_OUTPUT
+          else
+            echo "nfc_tag_id=${{ github.event.inputs.nfc_tag_id }}" >> $GITHUB_OUTPUT
+            echo "issue_title=${{ github.event.inputs.issue_title }}" >> $GITHUB_OUTPUT
+            echo "issue_body=${{ github.event.inputs.issue_body }}" >> $GITHUB_OUTPUT
+            echo "issue_type=${{ github.event.inputs.issue_type }}" >> $GITHUB_OUTPUT
+            echo "priority=${{ github.event.inputs.priority }}" >> $GITHUB_OUTPUT
+            echo "labels=" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")" >> $GITHUB_OUTPUT
+
+      - name: Validate NFC tag format
+        run: |
+          NFC_TAG_ID="${{ steps.issue_data.outputs.nfc_tag_id }}"
+          
+          # Basic validation for NFC tag ID format
+          if [ ${#NFC_TAG_ID} -lt 6 ] || [ ${#NFC_TAG_ID} -gt 20 ]; then
+            echo "Error: NFC Tag ID must be between 6 and 20 characters"
+            exit 1
+          fi
+          
+          if ! echo "$NFC_TAG_ID" | grep -qE '^[a-zA-Z0-9]+$'; then
+            echo "Error: NFC Tag ID must contain only alphanumeric characters"
+            exit 1
+          fi
+
+      - name: Setup Node.js for MongoDB operations
+        if: env.MONGODB_CONNECTION_STRING != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Record issue in MongoDB
+        if: env.MONGODB_CONNECTION_STRING != ''
+        run: |
+          npm install mongodb
+          
+          # Create Node.js script for MongoDB logging
+          cat > record_issue.js << 'EOF'
+          const { MongoClient } = require('mongodb');
+          
+          async function recordIssue() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              const collection = db.collection('issues');
+              
+              const issueData = {
+                nfcTagId: process.env.NFC_TAG_ID,
+                title: process.env.ISSUE_TITLE,
+                body: process.env.ISSUE_BODY,
+                type: process.env.ISSUE_TYPE,
+                priority: process.env.PRIORITY,
+                status: 'open',
+                createdAt: new Date(process.env.TIMESTAMP),
+                githubIssueNumber: null // Will be updated after GitHub issue creation
+              };
+              
+              const result = await collection.insertOne(issueData);
+              console.log(`Issue recorded in MongoDB with ID: ${result.insertedId}`);
+              console.log(`MONGODB_ISSUE_ID=${result.insertedId}`);
+              
+            } catch (error) {
+              console.error('MongoDB record error:', error);
+              // Don't fail the workflow if MongoDB is unavailable
+            } finally {
+              await client.close();
+            }
+          }
+          
+          recordIssue();
+          EOF
+          
+          # Run MongoDB recording
+          NFC_TAG_ID="${{ steps.issue_data.outputs.nfc_tag_id }}" \
+          ISSUE_TITLE="${{ steps.issue_data.outputs.issue_title }}" \
+          ISSUE_BODY="${{ steps.issue_data.outputs.issue_body }}" \
+          ISSUE_TYPE="${{ steps.issue_data.outputs.issue_type }}" \
+          PRIORITY="${{ steps.issue_data.outputs.priority }}" \
+          TIMESTAMP="${{ steps.issue_data.outputs.timestamp }}" \
+          node record_issue.js | tee mongodb_result.txt
+
+      - name: Determine issue labels
+        id: labels
+        run: |
+          NFC_TAG_ID="${{ steps.issue_data.outputs.nfc_tag_id }}"
+          ISSUE_TYPE="${{ steps.issue_data.outputs.issue_type }}"
+          PRIORITY="${{ steps.issue_data.outputs.priority }}"
+          
+          # Base labels
+          LABELS="$ISSUE_TYPE,tag-$NFC_TAG_ID"
+          
+          # Add priority labels
+          case "$PRIORITY" in
+            urgent)
+              LABELS="$LABELS,urgent,high-priority"
+              ;;
+            high)
+              LABELS="$LABELS,high-priority"
+              ;;
+            medium)
+              LABELS="$LABELS,medium-priority"
+              ;;
+            low)
+              LABELS="$LABELS,low-priority"
+              ;;
+          esac
+          
+          # Add type-specific labels
+          case "$ISSUE_TYPE" in
+            emergency|medical-emergency)
+              LABELS="$LABELS,emergency,immediate-attention"
+              ;;
+            lost-pet)
+              LABELS="$LABELS,lost-pet,community-help"
+              ;;
+            geofence-alert)
+              LABELS="$LABELS,geofence,location-alert"
+              ;;
+            contact-update|medical-update)
+              LABELS="$LABELS,data-update"
+              ;;
+            new-registration)
+              LABELS="$LABELS,registration,welcome"
+              ;;
+          esac
+          
+          # Add custom labels if provided
+          if [ -n "${{ steps.issue_data.outputs.labels }}" ]; then
+            LABELS="$LABELS,${{ steps.issue_data.outputs.labels }}"
+          fi
+          
+          echo "labels=$LABELS" >> $GITHUB_OUTPUT
+
+      - name: Format issue body
+        id: format_body
+        run: |
+          # Create formatted issue body with metadata
+          FORMATTED_BODY=$(cat << 'EOF'
+          ${{ steps.issue_data.outputs.issue_body }}
+          
+          ---
+          **Issue Metadata:**
+          - **NFC Tag ID:** ${{ steps.issue_data.outputs.nfc_tag_id }}
+          - **Issue Type:** ${{ steps.issue_data.outputs.issue_type }}
+          - **Priority:** ${{ steps.issue_data.outputs.priority }}
+          - **Created:** ${{ steps.issue_data.outputs.timestamp }}
+          - **Source:** Pet Tracker Automated System
+          
+          **Quick Actions:**
+          - [View Pet Profile](../../tree/main/data/users/${{ steps.issue_data.outputs.nfc_tag_id }})
+          - [Location History](../../tree/main/data/users/${{ steps.issue_data.outputs.nfc_tag_id }}/location.json)
+          - [Contact Information](../../tree/main/data/users/${{ steps.issue_data.outputs.nfc_tag_id }}/profile.json)
+          
+          > This issue was automatically created by the Pet Tracker system. Please review and take appropriate action.
+          EOF
+          )
+          
+          # Handle special formatting for emergency issues
+          if [[ "${{ steps.issue_data.outputs.issue_type }}" == "emergency" || "${{ steps.issue_data.outputs.issue_type }}" == "medical-emergency" ]]; then
+            FORMATTED_BODY="🚨 **EMERGENCY ALERT** 🚨
+
+          $FORMATTED_BODY
+
+          **IMMEDIATE ACTION REQUIRED**
+          This is an emergency situation that requires immediate attention."
+          fi
+          
+          # Save formatted body to output
+          echo "formatted_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$FORMATTED_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub issue
+        id: create_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '${{ steps.issue_data.outputs.issue_title }}';
+            const body = `${{ steps.format_body.outputs.formatted_body }}`;
+            const labels = '${{ steps.labels.outputs.labels }}'.split(',').filter(label => label.trim());
+            const issueType = '${{ steps.issue_data.outputs.issue_type }}';
+            
+            // Determine assignees based on issue type
+            let assignees = [];
+            if (['emergency', 'medical-emergency', 'lost-pet'].includes(issueType)) {
+              // For critical issues, you might want to assign to specific team members
+              // assignees = ['emergency-responder-username'];
+            }
+            
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: labels,
+              assignees: assignees
+            });
+            
+            console.log(`Created GitHub issue #${issue.data.number}`);
+            core.setOutput('issue_number', issue.data.number);
+            core.setOutput('issue_url', issue.data.html_url);
+            
+            return issue.data.number;
+
+      - name: Update MongoDB with GitHub issue number
+        if: env.MONGODB_CONNECTION_STRING != ''
+        run: |
+          # Create Node.js script to update MongoDB record
+          cat > update_issue_number.js << 'EOF'
+          const { MongoClient } = require('mongodb');
+          
+          async function updateIssueNumber() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              const collection = db.collection('issues');
+              
+              await collection.updateOne(
+                { 
+                  nfcTagId: process.env.NFC_TAG_ID,
+                  createdAt: new Date(process.env.TIMESTAMP)
+                },
+                { 
+                  $set: { 
+                    githubIssueNumber: parseInt(process.env.ISSUE_NUMBER),
+                    githubIssueUrl: process.env.ISSUE_URL
+                  }
+                }
+              );
+              
+              console.log(`Updated MongoDB record with GitHub issue #${process.env.ISSUE_NUMBER}`);
+              
+            } catch (error) {
+              console.error('MongoDB update error:', error);
+            } finally {
+              await client.close();
+            }
+          }
+          
+          updateIssueNumber();
+          EOF
+          
+          # Run MongoDB update
+          NFC_TAG_ID="${{ steps.issue_data.outputs.nfc_tag_id }}" \
+          TIMESTAMP="${{ steps.issue_data.outputs.timestamp }}" \
+          ISSUE_NUMBER="${{ steps.create_issue.outputs.issue_number }}" \
+          ISSUE_URL="${{ steps.create_issue.outputs.issue_url }}" \
+          node update_issue_number.js
+
+      - name: Add issue to project board
+        if: steps.issue_data.outputs.priority == 'urgent' || steps.issue_data.outputs.priority == 'high'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            // This would add high-priority issues to a project board
+            // You would need to configure your project board ID and column IDs
+            console.log('High priority issue created - consider adding to project board');
+
+      - name: Send notifications for critical issues
+        if: contains(fromJSON('["emergency", "medical-emergency", "lost-pet"]'), steps.issue_data.outputs.issue_type)
+        run: |
+          echo "🚨 CRITICAL ISSUE ALERT 🚨"
+          echo "Type: ${{ steps.issue_data.outputs.issue_type }}"
+          echo "NFC Tag: ${{ steps.issue_data.outputs.nfc_tag_id }}"
+          echo "Issue: ${{ steps.create_issue.outputs.issue_url }}"
+          echo "Time: ${{ steps.issue_data.outputs.timestamp }}"
+          
+          # Here you could add webhook notifications, SMS alerts, etc.
+          # Example webhook call:
+          # curl -X POST "$WEBHOOK_URL" \
+          #      -H "Content-Type: application/json" \
+          #      -d "{\"issue_type\":\"${{ steps.issue_data.outputs.issue_type }}\", \"nfc_tag\":\"${{ steps.issue_data.outputs.nfc_tag_id }}\", \"url\":\"${{ steps.create_issue.outputs.issue_url }}\"}"
+
+      - name: Log issue creation
+        run: |
+          echo "Issue Creation Summary:"
+          echo "========================"
+          echo "NFC Tag ID: ${{ steps.issue_data.outputs.nfc_tag_id }}"
+          echo "Issue Type: ${{ steps.issue_data.outputs.issue_type }}"
+          echo "Priority: ${{ steps.issue_data.outputs.priority }}"
+          echo "GitHub Issue: #${{ steps.create_issue.outputs.issue_number }}"
+          echo "Issue URL: ${{ steps.create_issue.outputs.issue_url }}"
+          echo "Created At: ${{ steps.issue_data.outputs.timestamp }}"
+          echo "Labels: ${{ steps.labels.outputs.labels }}"
+          echo "========================"
+
+  follow_up_actions:
+    runs-on: ubuntu-latest
+    needs: create_issue
+    if: contains(fromJSON('["emergency", "medical-emergency"]'), github.event.inputs.issue_type) || contains(fromJSON('["emergency", "medical-emergency"]'), github.event.client_payload.issue_type)
+    steps:
+      - name: Schedule follow-up check
+        run: |
+          echo "Scheduling follow-up for emergency issue"
+          # This could trigger additional workflows or set up monitoring
+          
+          # Create a follow-up issue for 1 hour later
+          FOLLOW_UP_TIME=$(date -u -d '+1 hour' +"%Y-%m-%dT%H:%M:%S.%3NZ")
+          echo "Follow-up scheduled for: $FOLLOW_UP_TIME"
+
+      - name: Create emergency response checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const nfcTagId = '${{ github.event.inputs.nfc_tag_id || github.event.client_payload.nfc_tag_id }}';
+            const originalIssue = '${{ needs.create_issue.outputs.issue_number }}';
+            
+            const checklistBody = `
+            Emergency Response Checklist for NFC Tag: ${nfcTagId}
+            
+            Related to issue #${originalIssue}
+            
+            ## Immediate Actions (0-15 minutes)
+            - [ ] Verify emergency details
+            - [ ] Contact pet owner
+            - [ ] Check pet's medical information for critical conditions
+            - [ ] Assess need for emergency services
+            
+            ## Short-term Actions (15-60 minutes)
+            - [ ] Monitor for additional updates
+            - [ ] Contact emergency contacts if owner unavailable
+            - [ ] Coordinate with local services if needed
+            - [ ] Document response actions
+            
+            ## Follow-up Actions (1+ hours)
+            - [ ] Confirm resolution
+            - [ ] Update emergency procedures if needed
+            - [ ] Close related issues
+            - [ ] Document lessons learned
+            
+            **Auto-generated emergency response checklist**
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Emergency Response Checklist - ${nfcTagId}`,
+              body: checklistBody,
+              labels: ['emergency-response', 'checklist', `tag-${nfcTagId}`]
+            });

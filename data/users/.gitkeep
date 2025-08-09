@@ -1,0 +1,6 @@
+# This directory stores per-user data organized by NFC tag ID
+# Structure: /data/users/{nfc-tag-id}/
+#   - profile.json (basic pet and owner information)
+#   - medical.json (medical records and history)
+#   - location.json (location tracking data)
+#   - settings.json (user preferences and configuration)

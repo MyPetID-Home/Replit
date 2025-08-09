@@ -1,0 +1,656 @@
+name: MongoDB Synchronization Workflow
+
+on:
+  schedule:
+    # Run every 30 minutes to sync data
+    - cron: '*/30 * * * *'
+  repository_dispatch:
+    types: [mongodb_sync, full_sync, sync_user_data]
+  workflow_dispatch:
+    inputs:
+      sync_type:
+        description: 'Type of synchronization'
+        required: true
+        type: choice
+        options:
+          - incremental
+          - full
+          - user_data_only
+          - location_data_only
+        default: 'incremental'
+      nfc_tag_id:
+        description: 'Specific NFC Tag ID to sync (optional)'
+        required: false
+        type: string
+      force_sync:
+        description: 'Force sync even if no changes detected'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  MONGODB_CONNECTION_STRING: ${{ secrets.MONGODB_CONNECTION_STRING }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  prepare_sync:
+    runs-on: ubuntu-latest
+    outputs:
+      sync_type: ${{ steps.determine_sync.outputs.sync_type }}
+      target_tag: ${{ steps.determine_sync.outputs.target_tag }}
+      force_sync: ${{ steps.determine_sync.outputs.force_sync }}
+    steps:
+      - name: Determine sync parameters
+        id: determine_sync
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "sync_type=${{ github.event.client_payload.sync_type || 'incremental' }}" >> $GITHUB_OUTPUT
+            echo "target_tag=${{ github.event.client_payload.nfc_tag_id || '' }}" >> $GITHUB_OUTPUT
+            echo "force_sync=${{ github.event.client_payload.force_sync || 'false' }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sync_type=${{ github.event.inputs.sync_type }}" >> $GITHUB_OUTPUT
+            echo "target_tag=${{ github.event.inputs.nfc_tag_id || '' }}" >> $GITHUB_OUTPUT
+            echo "force_sync=${{ github.event.inputs.force_sync }}" >> $GITHUB_OUTPUT
+          else
+            # Scheduled run - incremental sync
+            echo "sync_type=incremental" >> $GITHUB_OUTPUT
+            echo "target_tag=" >> $GITHUB_OUTPUT
+            echo "force_sync=false" >> $GITHUB_OUTPUT
+          fi
+
+  sync_github_to_mongodb:
+    runs-on: ubuntu-latest
+    needs: prepare_sync
+    if: env.MONGODB_CONNECTION_STRING != ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0  # Full history for change detection
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install mongodb fs-extra glob
+
+      - name: Detect changed files since last sync
+        id: changed_files
+        if: needs.prepare_sync.outputs.sync_type == 'incremental' && needs.prepare_sync.outputs.force_sync == 'false'
+        run: |
+          # Get the last sync timestamp from MongoDB or use 30 minutes ago as fallback
+          LAST_SYNC=$(date -u -d '30 minutes ago' +"%Y-%m-%dT%H:%M:%S.%3NZ")
+          echo "last_sync=$LAST_SYNC" >> $GITHUB_OUTPUT
+          
+          # Find changed files in data/users/ since last sync
+          CHANGED_FILES=""
+          if [ -d "data/users" ]; then
+            # Get files modified in the last 30 minutes
+            CHANGED_FILES=$(find data/users -name "*.json" -newermt "$LAST_SYNC" | tr '\n' ' ')
+          fi
+          
+          echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changes detected since last sync"
+            echo "skip_sync=true" >> $GITHUB_OUTPUT
+          else
+            echo "Changed files: $CHANGED_FILES"
+            echo "skip_sync=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Sync user data to MongoDB
+        if: steps.changed_files.outputs.skip_sync != 'true'
+        run: |
+          # Create comprehensive sync script
+          cat > sync_to_mongodb.js << 'EOF'
+          const { MongoClient } = require('mongodb');
+          const fs = require('fs-extra');
+          const path = require('path');
+          const glob = require('glob');
+          
+          async function syncToMongoDB() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              
+              // Collections
+              const usersCollection = db.collection('users');
+              const locationsCollection = db.collection('locations');
+              const medicalRecordsCollection = db.collection('medical_records');
+              const syncLogCollection = db.collection('sync_log');
+              
+              const syncType = process.env.SYNC_TYPE;
+              const targetTag = process.env.TARGET_TAG;
+              const changedFiles = process.env.CHANGED_FILES?.split(' ').filter(f => f) || [];
+              
+              let userDirs = [];
+              
+              // Determine which users to sync
+              if (targetTag) {
+                userDirs = [`data/users/${targetTag}`];
+              } else if (syncType === 'full' || changedFiles.length === 0) {
+                // Full sync - get all user directories
+                userDirs = glob.sync('data/users/*/').map(dir => dir.replace(/\/$/, ''));
+              } else {
+                // Incremental sync - extract unique user directories from changed files
+                const uniqueDirs = new Set();
+                changedFiles.forEach(file => {
+                  const match = file.match(/^data\/users\/([^\/]+)\//);
+                  if (match) {
+                    uniqueDirs.add(`data/users/${match[1]}`);
+                  }
+                });
+                userDirs = Array.from(uniqueDirs);
+              }
+              
+              console.log(`Syncing ${userDirs.length} user directories...`);
+              
+              let syncCount = 0;
+              const syncResults = [];
+              
+              for (const userDir of userDirs) {
+                try {
+                  if (!fs.existsSync(userDir)) {
+                    console.log(`Directory ${userDir} does not exist, skipping...`);
+                    continue;
+                  }
+                  
+                  const nfcTagId = path.basename(userDir);
+                  console.log(`Syncing user: ${nfcTagId}`);
+                  
+                  const userResult = {
+                    nfcTagId,
+                    success: false,
+                    syncedFiles: [],
+                    errors: []
+                  };
+                  
+                  // Base user document
+                  let userDoc = {
+                    nfcTagId: nfcTagId,
+                    lastSyncedAt: new Date(),
+                    syncSource: 'github'
+                  };
+                  
+                  // Sync profile.json
+                  const profilePath = path.join(userDir, 'profile.json');
+                  if (fs.existsSync(profilePath)) {
+                    try {
+                      const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+                      userDoc = { ...userDoc, ...profileData };
+                      userResult.syncedFiles.push('profile.json');
+                    } catch (error) {
+                      userResult.errors.push(`profile.json: ${error.message}`);
+                    }
+                  }
+                  
+                  // Sync auth.json
+                  const authPath = path.join(userDir, 'auth.json');
+                  if (fs.existsSync(authPath)) {
+                    try {
+                      const authData = JSON.parse(fs.readFileSync(authPath, 'utf8'));
+                      userDoc.patreonAuth = authData;
+                      userResult.syncedFiles.push('auth.json');
+                    } catch (error) {
+                      userResult.errors.push(`auth.json: ${error.message}`);
+                    }
+                  }
+                  
+                  // Sync settings.json
+                  const settingsPath = path.join(userDir, 'settings.json');
+                  if (fs.existsSync(settingsPath)) {
+                    try {
+                      const settingsData = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                      userDoc.settings = settingsData;
+                      userResult.syncedFiles.push('settings.json');
+                    } catch (error) {
+                      userResult.errors.push(`settings.json: ${error.message}`);
+                    }
+                  }
+                  
+                  // Upsert user document
+                  await usersCollection.replaceOne(
+                    { nfcTagId: nfcTagId },
+                    userDoc,
+                    { upsert: true }
+                  );
+                  
+                  // Sync location data
+                  const locationPath = path.join(userDir, 'location.json');
+                  if (fs.existsSync(locationPath)) {
+                    try {
+                      const locationData = JSON.parse(fs.readFileSync(locationPath, 'utf8'));
+                      
+                      // Update user's last known location
+                      if (locationData.lastKnown) {
+                        await usersCollection.updateOne(
+                          { nfcTagId: nfcTagId },
+                          { 
+                            $set: { 
+                              lastKnownLocation: {
+                                ...locationData.lastKnown,
+                                timestamp: new Date(locationData.lastKnown.timestamp)
+                              }
+                            }
+                          }
+                        );
+                      }
+                      
+                      // Sync location history to separate collection
+                      if (locationData.history && locationData.history.length > 0) {
+                        const locationDocs = locationData.history.map(loc => ({
+                          nfcTagId: nfcTagId,
+                          latitude: loc.latitude,
+                          longitude: loc.longitude,
+                          accuracy: loc.accuracy,
+                          source: loc.source,
+                          timestamp: new Date(loc.timestamp),
+                          syncedAt: new Date()
+                        }));
+                        
+                        // Use upsert to avoid duplicates
+                        for (const locDoc of locationDocs) {
+                          await locationsCollection.replaceOne(
+                            { 
+                              nfcTagId: locDoc.nfcTagId,
+                              timestamp: locDoc.timestamp
+                            },
+                            locDoc,
+                            { upsert: true }
+                          );
+                        }
+                      }
+                      
+                      userResult.syncedFiles.push('location.json');
+                    } catch (error) {
+                      userResult.errors.push(`location.json: ${error.message}`);
+                    }
+                  }
+                  
+                  // Sync medical data
+                  const medicalPath = path.join(userDir, 'medical.json');
+                  if (fs.existsSync(medicalPath)) {
+                    try {
+                      const medicalData = JSON.parse(fs.readFileSync(medicalPath, 'utf8'));
+                      
+                      const medicalDoc = {
+                        nfcTagId: nfcTagId,
+                        ...medicalData,
+                        lastUpdated: new Date(),
+                        syncedAt: new Date()
+                      };
+                      
+                      await medicalRecordsCollection.replaceOne(
+                        { nfcTagId: nfcTagId },
+                        medicalDoc,
+                        { upsert: true }
+                      );
+                      
+                      // Also store medical info in user document
+                      await usersCollection.updateOne(
+                        { nfcTagId: nfcTagId },
+                        { $set: { medicalInfo: medicalData } }
+                      );
+                      
+                      userResult.syncedFiles.push('medical.json');
+                    } catch (error) {
+                      userResult.errors.push(`medical.json: ${error.message}`);
+                    }
+                  }
+                  
+                  userResult.success = userResult.errors.length === 0;
+                  syncResults.push(userResult);
+                  
+                  if (userResult.success) {
+                    syncCount++;
+                    console.log(`✅ Successfully synced ${nfcTagId}: ${userResult.syncedFiles.join(', ')}`);
+                  } else {
+                    console.log(`❌ Errors syncing ${nfcTagId}: ${userResult.errors.join('; ')}`);
+                  }
+                  
+                } catch (error) {
+                  console.error(`Failed to sync user directory ${userDir}:`, error);
+                  syncResults.push({
+                    nfcTagId: path.basename(userDir),
+                    success: false,
+                    syncedFiles: [],
+                    errors: [error.message]
+                  });
+                }
+              }
+              
+              // Log sync operation
+              const syncLogEntry = {
+                syncType: syncType,
+                direction: 'github_to_mongodb',
+                targetTag: targetTag || null,
+                totalUsers: userDirs.length,
+                successfulSyncs: syncCount,
+                failedSyncs: userDirs.length - syncCount,
+                syncResults: syncResults,
+                timestamp: new Date(),
+                triggeredBy: process.env.GITHUB_ACTOR || 'system'
+              };
+              
+              await syncLogCollection.insertOne(syncLogEntry);
+              
+              console.log(`Sync completed: ${syncCount}/${userDirs.length} users synced successfully`);
+              console.log(`SYNC_SUMMARY={"total":${userDirs.length},"success":${syncCount},"failed":${userDirs.length - syncCount}}`);
+              
+            } catch (error) {
+              console.error('MongoDB sync failed:', error);
+              process.exit(1);
+            } finally {
+              await client.close();
+            }
+          }
+          
+          syncToMongoDB();
+          EOF
+          
+          # Run the sync
+          SYNC_TYPE="${{ needs.prepare_sync.outputs.sync_type }}" \
+          TARGET_TAG="${{ needs.prepare_sync.outputs.target_tag }}" \
+          CHANGED_FILES="${{ steps.changed_files.outputs.changed_files }}" \
+          node sync_to_mongodb.js | tee sync_results.txt
+
+      - name: Extract sync summary
+        if: steps.changed_files.outputs.skip_sync != 'true'
+        id: sync_summary
+        run: |
+          if [ -f sync_results.txt ]; then
+            SUMMARY=$(grep "SYNC_SUMMARY=" sync_results.txt | cut -d'=' -f2)
+            echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+          else
+            echo "summary={\"total\":0,\"success\":0,\"failed\":0}" >> $GITHUB_OUTPUT
+          fi
+
+  sync_mongodb_to_github:
+    runs-on: ubuntu-latest
+    needs: [prepare_sync, sync_github_to_mongodb]
+    if: needs.prepare_sync.outputs.sync_type == 'full' || needs.prepare_sync.outputs.sync_type == 'incremental'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install mongodb fs-extra
+
+      - name: Sync MongoDB changes back to GitHub
+        run: |
+          cat > sync_from_mongodb.js << 'EOF'
+          const { MongoClient } = require('mongodb');
+          const fs = require('fs-extra');
+          const path = require('path');
+          
+          async function syncFromMongoDB() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              
+              const usersCollection = db.collection('users');
+              const locationsCollection = db.collection('locations');
+              const medicalRecordsCollection = db.collection('medical_records');
+              
+              // Find users that have been updated in MongoDB but not synced back
+              const lastGitHubSync = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
+              
+              let query = {
+                lastSyncedAt: { $gt: lastGitHubSync },
+                syncSource: { $ne: 'github' }
+              };
+              
+              if (process.env.TARGET_TAG) {
+                query.nfcTagId = process.env.TARGET_TAG;
+              }
+              
+              const updatedUsers = await usersCollection.find(query).toArray();
+              
+              console.log(`Found ${updatedUsers.length} users with MongoDB updates to sync back`);
+              
+              let syncCount = 0;
+              
+              for (const user of updatedUsers) {
+                try {
+                  const userDir = `data/users/${user.nfcTagId}`;
+                  await fs.ensureDir(userDir);
+                  
+                  // Create or update profile.json
+                  const profileData = {
+                    nfcTagId: user.nfcTagId,
+                    petName: user.petName,
+                    petBreed: user.petBreed,
+                    petAge: user.petAge,
+                    petColor: user.petColor,
+                    petGender: user.petGender,
+                    ownerName: user.ownerName,
+                    contactInfo: user.contactInfo,
+                    createdAt: user.createdAt,
+                    lastUpdated: new Date().toISOString()
+                  };
+                  
+                  await fs.writeJson(path.join(userDir, 'profile.json'), profileData, { spaces: 2 });
+                  
+                  // Update auth.json if Patreon data exists
+                  if (user.patreonAuth) {
+                    await fs.writeJson(path.join(userDir, 'auth.json'), user.patreonAuth, { spaces: 2 });
+                  }
+                  
+                  // Update settings.json if exists
+                  if (user.settings) {
+                    await fs.writeJson(path.join(userDir, 'settings.json'), user.settings, { spaces: 2 });
+                  }
+                  
+                  // Sync location data
+                  const locations = await locationsCollection.find(
+                    { nfcTagId: user.nfcTagId }
+                  ).sort({ timestamp: -1 }).limit(1000).toArray();
+                  
+                  if (locations.length > 0) {
+                    const locationData = {
+                      lastKnown: user.lastKnownLocation || null,
+                      history: locations.map(loc => ({
+                        latitude: loc.latitude,
+                        longitude: loc.longitude,
+                        accuracy: loc.accuracy,
+                        source: loc.source,
+                        timestamp: loc.timestamp.toISOString()
+                      }))
+                    };
+                    
+                    await fs.writeJson(path.join(userDir, 'location.json'), locationData, { spaces: 2 });
+                  }
+                  
+                  // Sync medical data
+                  const medicalRecord = await medicalRecordsCollection.findOne({ nfcTagId: user.nfcTagId });
+                  if (medicalRecord || user.medicalInfo) {
+                    const medicalData = medicalRecord || user.medicalInfo;
+                    // Remove MongoDB-specific fields
+                    delete medicalData._id;
+                    delete medicalData.nfcTagId;
+                    delete medicalData.syncedAt;
+                    
+                    await fs.writeJson(path.join(userDir, 'medical.json'), medicalData, { spaces: 2 });
+                  }
+                  
+                  syncCount++;
+                  console.log(`✅ Synced ${user.nfcTagId} from MongoDB to GitHub`);
+                  
+                } catch (error) {
+                  console.error(`Failed to sync ${user.nfcTagId} from MongoDB:`, error);
+                }
+              }
+              
+              console.log(`MongoDB to GitHub sync completed: ${syncCount}/${updatedUsers.length} users synced`);
+              console.log(`REVERSE_SYNC_COUNT=${syncCount}`);
+              
+            } catch (error) {
+              console.error('MongoDB to GitHub sync failed:', error);
+              process.exit(1);
+            } finally {
+              await client.close();
+            }
+          }
+          
+          syncFromMongoDB();
+          EOF
+          
+          TARGET_TAG="${{ needs.prepare_sync.outputs.target_tag }}" \
+          node sync_from_mongodb.js | tee reverse_sync_results.txt
+
+      - name: Commit synchronized changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action - MongoDB Sync"
+          
+          # Add any new or modified files
+          if [ -d "data/users" ]; then
+            git add data/users/
+          fi
+          
+          # Check if there are changes to commit
+          if ! git diff --staged --quiet; then
+            REVERSE_SYNC_COUNT=$(grep "REVERSE_SYNC_COUNT=" reverse_sync_results.txt | cut -d'=' -f2 || echo "0")
+            git commit -m "MongoDB sync: Updated $REVERSE_SYNC_COUNT user records from database"
+            git push
+          else
+            echo "No changes from MongoDB to commit"
+          fi
+
+  cleanup_and_report:
+    runs-on: ubuntu-latest
+    needs: [prepare_sync, sync_github_to_mongodb, sync_mongodb_to_github]
+    if: always()
+    steps:
+      - name: Generate sync report
+        uses: actions/github-script@v7
+        if: needs.sync_github_to_mongodb.outputs.sync_summary != ''
+        with:
+          script: |
+            const syncType = '${{ needs.prepare_sync.outputs.sync_type }}';
+            const targetTag = '${{ needs.prepare_sync.outputs.target_tag }}';
+            const syncSummaryStr = '${{ needs.sync_github_to_mongodb.outputs.sync_summary }}';
+            
+            let syncSummary;
+            try {
+              syncSummary = JSON.parse(syncSummaryStr);
+            } catch (error) {
+              syncSummary = { total: 0, success: 0, failed: 0 };
+            }
+            
+            const title = `📊 MongoDB Sync Report - ${new Date().toISOString().split('T')[0]}`;
+            const body = `
+            **MongoDB Synchronization Report**
+            
+            **Sync Details:**
+            - **Type:** ${syncType}
+            - **Target:** ${targetTag || 'All users'}
+            - **Triggered:** ${{ github.event_name }}
+            - **Timestamp:** ${new Date().toISOString()}
+            
+            **Results:**
+            - **Total Users:** ${syncSummary.total}
+            - **Successfully Synced:** ${syncSummary.success}
+            - **Failed:** ${syncSummary.failed}
+            - **Success Rate:** ${syncSummary.total > 0 ? Math.round((syncSummary.success / syncSummary.total) * 100) : 0}%
+            
+            **Status:** ${syncSummary.failed === 0 ? '✅ All synchronizations successful' : '⚠️ Some synchronizations failed'}
+            
+            ${syncSummary.failed > 0 ? '**Action Required:** Review failed synchronizations and resolve any data conflicts.' : ''}
+            
+            ---
+            *This report was automatically generated by the MongoDB sync workflow.*
+            `;
+            
+            const labels = ['mongodb-sync', 'automated-report'];
+            if (syncSummary.failed > 0) labels.push('sync-errors');
+            if (targetTag) labels.push(`tag-${targetTag}`);
+            
+            // Only create issue if there were failures or it's a full sync
+            if (syncSummary.failed > 0 || syncType === 'full') {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: labels
+              });
+            }
+
+      - name: Update sync status in MongoDB
+        if: env.MONGODB_CONNECTION_STRING != ''
+        run: |
+          npm install mongodb
+          
+          cat > update_sync_status.js << 'EOF'
+          const { MongoClient } = require('mongodb');
+          
+          async function updateSyncStatus() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              const syncStatusCollection = db.collection('sync_status');
+              
+              const statusDoc = {
+                lastSyncAttempt: new Date(),
+                syncType: process.env.SYNC_TYPE,
+                status: process.env.SYNC_STATUS,
+                nextScheduledSync: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes from now
+                workflowRun: process.env.GITHUB_RUN_ID,
+                updatedBy: 'github_actions'
+              };
+              
+              await syncStatusCollection.replaceOne(
+                { _id: 'latest' },
+                { _id: 'latest', ...statusDoc },
+                { upsert: true }
+              );
+              
+              console.log('Sync status updated in MongoDB');
+              
+            } catch (error) {
+              console.error('Failed to update sync status:', error);
+            } finally {
+              await client.close();
+            }
+          }
+          
+          updateSyncStatus();
+          EOF
+          
+          SYNC_TYPE="${{ needs.prepare_sync.outputs.sync_type }}" \
+          SYNC_STATUS="${{ job.status }}" \
+          GITHUB_RUN_ID="${{ github.run_id }}" \
+          node update_sync_status.js
+
+      - name: Log final summary
+        run: |
+          echo "MongoDB Synchronization Workflow Summary:"
+          echo "=========================================="
+          echo "Sync Type: ${{ needs.prepare_sync.outputs.sync_type }}"
+          echo "Target Tag: ${{ needs.prepare_sync.outputs.target_tag || 'All users' }}"
+          echo "Force Sync: ${{ needs.prepare_sync.outputs.force_sync }}"
+          echo "GitHub to MongoDB: ${{ needs.sync_github_to_mongodb.result }}"
+          echo "MongoDB to GitHub: ${{ needs.sync_mongodb_to_github.result }}"
+          echo "Workflow Status: ${{ job.status }}"
+          echo "=========================================="
+

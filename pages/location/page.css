@@ -1,0 +1,644 @@
+/* Location page specific styles */
+.location-page {
+    padding: 1rem 0;
+}
+
+.page-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    color: var(--text-primary);
+}
+
+.page-subtitle {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.location-content {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.location-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+/* Map Card */
+.map-card {
+    grid-column: 1;
+    grid-row: 1 / 3;
+}
+
+.map-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.location-map {
+    height: 400px;
+    background: var(--primary-color);
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+}
+
+.map-placeholder {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 1rem;
+    color: var(--text-muted);
+}
+
+.map-placeholder i {
+    font-size: 4rem;
+    color: var(--accent-color);
+}
+
+.map-implementation {
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+}
+
+.map-message {
+    text-align: center;
+    padding: 2rem;
+    max-width: 400px;
+}
+
+.map-message i {
+    font-size: 3rem;
+    color: var(--accent-color);
+    margin-bottom: 1rem;
+}
+
+.map-features {
+    margin-top: 1.5rem;
+    text-align: left;
+    background: var(--secondary-color);
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.map-features ul {
+    margin-top: 0.5rem;
+    padding-left: 1.5rem;
+}
+
+.map-features li {
+    margin-bottom: 0.25rem;
+    color: var(--text-secondary);
+}
+
+/* Status Card */
+.status-card {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.location-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.current-location-details {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.location-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.location-detail strong {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.location-detail span {
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+.source-manual { color: var(--accent-color); }
+.source-tasker { color: var(--success-color); }
+.source-automatic { color: var(--warning-color); }
+.source-unknown { color: var(--text-muted); }
+
+.location-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+/* Actions Card */
+.actions-card {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+.action-buttons {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.action-buttons .btn {
+    justify-content: flex-start;
+    width: 100%;
+    padding: 0.75rem 1rem;
+}
+
+/* History Card */
+.history-card {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.location-history {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-item:last-child {
+    border-bottom: none;
+}
+
+.history-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--accent-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+
+.history-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.history-coordinates {
+    font-family: monospace;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.history-time {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.history-accuracy {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-left: 0.5rem;
+}
+
+.history-actions {
+    flex-shrink: 0;
+}
+
+/* Analytics Card */
+.analytics-card {
+    grid-column: 3;
+    grid-row: 2;
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.analytics-item {
+    text-align: center;
+    padding: 1rem;
+    background: var(--primary-color);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.analytics-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.analytics-value {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Geofence Card */
+.geofence-card {
+    grid-column: 1;
+    grid-row: 3;
+}
+
+.geofence-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    transition: var(--transition);
+}
+
+.geofence-item:hover {
+    border-color: var(--accent-color);
+}
+
+.geofence-item.geofence-inactive {
+    opacity: 0.6;
+    border-color: var(--text-muted);
+}
+
+.geofence-info {
+    flex: 1;
+}
+
+.geofence-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.geofence-details {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.geofence-radius {
+    color: var(--accent-color);
+}
+
+.geofence-alert {
+    text-transform: capitalize;
+}
+
+.geofence-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Modals */
+.location-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1200;
+}
+
+.modal-content-large {
+    background: var(--secondary-color);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 800px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-content-medium {
+    background: var(--secondary-color);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h3 {
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* History Modal */
+.history-filters {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.detailed-history {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.detailed-history-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.history-index {
+    background: var(--accent-color);
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.history-info {
+    flex: 1;
+}
+
+.history-coords {
+    font-family: monospace;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.history-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.history-source {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.history-item-actions {
+    flex-shrink: 0;
+}
+
+/* Geofence Form */
+.location-input-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.location-input-group input {
+    flex: 1;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .location-grid {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto;
+    }
+    
+    .map-card {
+        grid-column: 1 / 3;
+        grid-row: 1;
+    }
+    
+    .status-card {
+        grid-column: 1;
+        grid-row: 2;
+    }
+    
+    .actions-card {
+        grid-column: 2;
+        grid-row: 2;
+    }
+    
+    .history-card {
+        grid-column: 1;
+        grid-row: 3;
+    }
+    
+    .analytics-card {
+        grid-column: 2;
+        grid-row: 3;
+    }
+    
+    .geofence-card {
+        grid-column: 1 / 3;
+        grid-row: 4;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-header h1 {
+        font-size: 2rem;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .location-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .map-card,
+    .status-card,
+    .actions-card,
+    .history-card,
+    .analytics-card,
+    .geofence-card {
+        grid-column: 1;
+        grid-row: auto;
+    }
+    
+    .location-map {
+        height: 250px;
+    }
+    
+    .map-controls {
+        flex-wrap: wrap;
+    }
+    
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .action-buttons .btn {
+        justify-content: center;
+    }
+    
+    .geofence-item {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .geofence-details {
+        justify-content: center;
+    }
+    
+    .history-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .location-input-group {
+        flex-direction: column;
+    }
+    
+    .modal-content-large,
+    .modal-content-medium {
+        padding: 1.5rem;
+        margin: 1rem;
+    }
+    
+    .detailed-history-item {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.75rem;
+    }
+    
+    .history-meta {
+        justify-content: center;
+    }
+}
+
+/* Status indicator animations */
+.status-dot.online {
+    animation: locationPulse 2s infinite;
+}
+
+@keyframes locationPulse {
+    0% {
+        box-shadow: 0 0 8px rgba(40, 167, 69, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 12px rgba(40, 167, 69, 0.8);
+    }
+    100% {
+        box-shadow: 0 0 8px rgba(40, 167, 69, 0.4);
+    }
+}
+
+/* Loading states */
+.location-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.location-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid var(--accent-color);
+    border-top: 2px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Accessibility improvements */
+.location-map:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .geofence-item {
+        border-width: 2px;
+    }
+    
+    .status-dot {
+        border: 2px solid var(--text-primary);
+    }
+}
+
+/* Print styles */
+@media print {
+    .location-page {
+        color: black;
+    }
+    
+    .map-card,
+    .action-buttons {
+        display: none;
+    }
+    
+    .location-grid {
+        display: block;
+    }
+    
+    .card {
+        break-inside: avoid;
+        margin-bottom: 1rem;
+    }
+}

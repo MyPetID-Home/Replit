@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
+    <meta name="description" content="{% if page.description %}{{ page.description }}{% else %}{{ site.description }}{% endif %}">
+    
+    <!-- Global Styles -->
+    <link rel="stylesheet" href="{{ '/assets/css/global.css' | relative_url }}">
+    
+    <!-- Page-specific styles -->
+    {% if page.custom_css %}
+        <link rel="stylesheet" href="{{ page.custom_css | relative_url }}">
+    {% endif %}
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Feather Icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+</head>
+<body class="{% if page.body_class %}{{ page.body_class }}{% endif %}">
+    {{ content }}
+    
+    <!-- Global JavaScript -->
+    <script src="{{ '/assets/js/utils.js' | relative_url }}"></script>
+    <script src="{{ '/assets/js/auth.js' | relative_url }}"></script>
+    <script src="{{ '/assets/js/router.js' | relative_url }}"></script>
+    <script src="{{ '/assets/js/app.js' | relative_url }}"></script>
+    
+    <!-- Initialize Feather Icons -->
+    <script>feather.replace()</script>
+    
+    <!-- Page-specific scripts -->
+    {% if page.custom_js %}
+        <script src="{{ page.custom_js | relative_url }}"></script>
+    {% endif %}
+</body>
+</html>

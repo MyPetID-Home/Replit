@@ -1,0 +1,370 @@
+<div class="medical-page">
+    <div class="page-header">
+        <h1>
+            <i data-feather="heart"></i>
+            Medical Information
+        </h1>
+        <p class="page-subtitle">Manage your pet's health records and medical information</p>
+    </div>
+
+    <div class="medical-content">
+        <div class="medical-grid">
+            <!-- Medical Form Card -->
+            <div class="card medical-form-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="file-text"></i>
+                        Health Records
+                    </h2>
+                    <button class="btn btn-outline btn-sm" onclick="medicalPage.resetForm()">
+                        <i data-feather="refresh-cw"></i>
+                        Reset
+                    </button>
+                </div>
+                <div class="card-content">
+                    <form id="medical-form" onsubmit="medicalPage.saveMedicalInfo(event)">
+                        <!-- Basic Medical Info -->
+                        <fieldset class="form-fieldset">
+                            <legend>Basic Information</legend>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="weight">Weight</label>
+                                    <div class="input-with-unit">
+                                        <input type="number" id="weight" name="weight" class="form-input" 
+                                               placeholder="25" step="0.1">
+                                        <select name="weightUnit" class="form-select-unit">
+                                            <option value="kg">kg</option>
+                                            <option value="lbs">lbs</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="height">Height</label>
+                                    <div class="input-with-unit">
+                                        <input type="number" id="height" name="height" class="form-input" 
+                                               placeholder="60" step="0.1">
+                                        <select name="heightUnit" class="form-select-unit">
+                                            <option value="cm">cm</option>
+                                            <option value="in">in</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="microchipId">Microchip ID</label>
+                                    <input type="text" id="microchipId" name="microchipId" class="form-input" 
+                                           placeholder="e.g., 123456789012345">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="birthDate">Birth Date</label>
+                                    <input type="date" id="birthDate" name="birthDate" class="form-input">
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Veterinary Information -->
+                        <fieldset class="form-fieldset">
+                            <legend>Veterinary Care</legend>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="veterinarianName">Veterinarian Name</label>
+                                <input type="text" id="veterinarianName" name="veterinarianName" class="form-input" 
+                                       placeholder="Dr. Smith">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="vetClinicName">Clinic Name</label>
+                                <input type="text" id="vetClinicName" name="vetClinicName" class="form-input" 
+                                       placeholder="City Veterinary Clinic">
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="vetPhone">Clinic Phone</label>
+                                    <input type="tel" id="vetPhone" name="vetPhone" class="form-input" 
+                                           placeholder="(555) 123-4567">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="vetEmail">Clinic Email</label>
+                                    <input type="email" id="vetEmail" name="vetEmail" class="form-input" 
+                                           placeholder="clinic@example.com">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="vetAddress">Clinic Address</label>
+                                <textarea id="vetAddress" name="vetAddress" class="form-textarea" rows="2"
+                                          placeholder="123 Main St, City, State 12345"></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Allergies -->
+                        <fieldset class="form-fieldset">
+                            <legend>Allergies & Sensitivities</legend>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="foodAllergies">Food Allergies</label>
+                                <textarea id="foodAllergies" name="foodAllergies" class="form-textarea" rows="3"
+                                          placeholder="List any known food allergies (e.g., chicken, wheat, dairy)"></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="medicationAllergies">Medication Allergies</label>
+                                <textarea id="medicationAllergies" name="medicationAllergies" class="form-textarea" rows="3"
+                                          placeholder="List any known medication allergies"></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="environmentalAllergies">Environmental Allergies</label>
+                                <textarea id="environmentalAllergies" name="environmentalAllergies" class="form-textarea" rows="3"
+                                          placeholder="List any environmental allergies (e.g., pollen, grass, dust)"></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Current Medications -->
+                        <fieldset class="form-fieldset">
+                            <legend>Current Medications</legend>
+                            
+                            <div id="medications-list">
+                                <div class="medication-entry">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="form-label">Medication Name</label>
+                                            <input type="text" name="medicationName[]" class="form-input" 
+                                                   placeholder="e.g., Metacam">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Dosage</label>
+                                            <input type="text" name="medicationDosage[]" class="form-input" 
+                                                   placeholder="e.g., 5mg twice daily">
+                                        </div>
+                                        <div class="form-group medication-actions">
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="medicalPage.removeMedication(this)">
+                                                <i data-feather="trash-2"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Purpose/Notes</label>
+                                        <input type="text" name="medicationNotes[]" class="form-input" 
+                                               placeholder="e.g., For arthritis pain">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button type="button" class="btn btn-outline" onclick="medicalPage.addMedication()">
+                                <i data-feather="plus"></i>
+                                Add Medication
+                            </button>
+                        </fieldset>
+
+                        <!-- Medical Conditions -->
+                        <fieldset class="form-fieldset">
+                            <legend>Medical Conditions</legend>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="chronicConditions">Chronic Conditions</label>
+                                <textarea id="chronicConditions" name="chronicConditions" class="form-textarea" rows="3"
+                                          placeholder="List any chronic conditions (e.g., diabetes, arthritis, heart disease)"></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="pastSurgeries">Past Surgeries</label>
+                                <textarea id="pastSurgeries" name="pastSurgeries" class="form-textarea" rows="3"
+                                          placeholder="List any past surgeries and dates"></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="behavioralIssues">Behavioral Notes</label>
+                                <textarea id="behavioralIssues" name="behavioralIssues" class="form-textarea" rows="3"
+                                          placeholder="Any behavioral issues or special handling notes"></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Vaccination Records -->
+                        <fieldset class="form-fieldset">
+                            <legend>Vaccination Status</legend>
+                            
+                            <div class="vaccination-grid">
+                                <div class="vaccination-item">
+                                    <label class="vaccination-label">
+                                        <input type="checkbox" name="vaccinations[]" value="rabies">
+                                        Rabies
+                                    </label>
+                                    <input type="date" name="rabiesDate" class="form-input form-input-sm" title="Last vaccination date">
+                                </div>
+                                
+                                <div class="vaccination-item">
+                                    <label class="vaccination-label">
+                                        <input type="checkbox" name="vaccinations[]" value="dhpp">
+                                        DHPP (Distemper/Hepatitis/Parvovirus/Parainfluenza)
+                                    </label>
+                                    <input type="date" name="dhppDate" class="form-input form-input-sm" title="Last vaccination date">
+                                </div>
+                                
+                                <div class="vaccination-item">
+                                    <label class="vaccination-label">
+                                        <input type="checkbox" name="vaccinations[]" value="bordetella">
+                                        Bordetella (Kennel Cough)
+                                    </label>
+                                    <input type="date" name="bordetellaDate" class="form-input form-input-sm" title="Last vaccination date">
+                                </div>
+                                
+                                <div class="vaccination-item">
+                                    <label class="vaccination-label">
+                                        <input type="checkbox" name="vaccinations[]" value="lyme">
+                                        Lyme Disease
+                                    </label>
+                                    <input type="date" name="lymeDate" class="form-input form-input-sm" title="Last vaccination date">
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Emergency Medical Information -->
+                        <fieldset class="form-fieldset emergency-fieldset">
+                            <legend>Emergency Medical Information</legend>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="emergencyInstructions">Emergency Instructions</label>
+                                <textarea id="emergencyInstructions" name="emergencyInstructions" class="form-textarea" rows="4"
+                                          placeholder="Important instructions for emergency responders or anyone finding your pet"></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="criticalMedications">Critical Medications</label>
+                                <textarea id="criticalMedications" name="criticalMedications" class="form-textarea" rows="2"
+                                          placeholder="Life-critical medications that must be continued"></textarea>
+                            </div>
+                        </fieldset>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i data-feather="save"></i>
+                                Save Medical Information
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="router.navigateTo('/')">
+                                <i data-feather="arrow-left"></i>
+                                Back to Dashboard
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Medical Summary Card -->
+            <div class="card medical-summary-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="clipboard"></i>
+                        Medical Summary
+                    </h2>
+                    <button class="btn btn-outline btn-sm" onclick="medicalPage.printMedicalCard()">
+                        <i data-feather="printer"></i>
+                        Print
+                    </button>
+                </div>
+                <div class="card-content">
+                    <div id="medical-summary">
+                        <p class="text-muted">Medical information will appear here after saving</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions Card -->
+            <div class="card quick-actions-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="zap"></i>
+                        Medical Actions
+                    </h2>
+                </div>
+                <div class="card-content">
+                    <div class="medical-actions">
+                        <button class="btn btn-outline" onclick="medicalPage.exportMedicalData()">
+                            <i data-feather="download"></i>
+                            Export Medical Data
+                        </button>
+                        <button class="btn btn-outline" onclick="medicalPage.schedulePetCare()">
+                            <i data-feather="calendar"></i>
+                            Schedule Care Reminder
+                        </button>
+                        <button class="btn btn-outline" onclick="medicalPage.contactVet()">
+                            <i data-feather="phone"></i>
+                            Contact Veterinarian
+                        </button>
+                        <button class="btn btn-warning" onclick="medicalPage.reportMedicalEmergency()">
+                            <i data-feather="alert-triangle"></i>
+                            Medical Emergency
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vaccination Status Card -->
+            <div class="card vaccination-status-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="shield"></i>
+                        Vaccination Status
+                    </h2>
+                </div>
+                <div class="card-content">
+                    <div id="vaccination-summary">
+                        <p class="text-muted">Vaccination status will appear here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Care Reminder Modal -->
+<div class="medical-modal" id="care-reminder-modal" style="display: none;">
+    <div class="modal-content-medium">
+        <div class="modal-header">
+            <h3>Schedule Care Reminder</h3>
+            <button class="btn btn-sm" onclick="medicalPage.closeCareReminderModal()">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="medicalPage.saveCareReminder(event)">
+                <div class="form-group">
+                    <label class="form-label">Reminder Type:</label>
+                    <select name="reminderType" class="form-select" required>
+                        <option value="">Select reminder type</option>
+                        <option value="vaccination">Vaccination Due</option>
+                        <option value="medication">Medication Refill</option>
+                        <option value="checkup">Regular Checkup</option>
+                        <option value="grooming">Grooming Appointment</option>
+                        <option value="custom">Custom Reminder</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Reminder Date:</label>
+                    <input type="date" name="reminderDate" class="form-input" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Notes:</label>
+                    <textarea name="reminderNotes" class="form-textarea" rows="3"
+                              placeholder="Additional notes for this reminder..."></textarea>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i data-feather="calendar"></i>
+                        Schedule Reminder
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="medicalPage.closeCareReminderModal()">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

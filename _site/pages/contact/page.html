@@ -1,0 +1,231 @@
+<div class="contact-page">
+    <div class="page-header">
+        <h1>
+            <i data-feather="user"></i>
+            Contact Information
+        </h1>
+        <p class="page-subtitle">Manage your pet's contact and owner information</p>
+    </div>
+
+    <div class="contact-content">
+        <div class="contact-grid">
+            <!-- Contact Form Card -->
+            <div class="card contact-form-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="edit-3"></i>
+                        Edit Contact Details
+                    </h2>
+                    <button class="btn btn-outline btn-sm" onclick="contactPage.resetForm()">
+                        <i data-feather="refresh-cw"></i>
+                        Reset
+                    </button>
+                </div>
+                <div class="card-content">
+                    <form id="contact-form" onsubmit="contactPage.saveContact(event)">
+                        <!-- Pet Information -->
+                        <fieldset class="form-fieldset">
+                            <legend>Pet Information</legend>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="petName">Pet Name *</label>
+                                <input type="text" id="petName" name="petName" class="form-input" 
+                                       placeholder="Enter your pet's name" required>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="petBreed">Breed</label>
+                                    <input type="text" id="petBreed" name="petBreed" class="form-input" 
+                                           placeholder="e.g., Golden Retriever">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="petAge">Age</label>
+                                    <input type="text" id="petAge" name="petAge" class="form-input" 
+                                           placeholder="e.g., 3 years">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="petColor">Color/Markings</label>
+                                    <input type="text" id="petColor" name="petColor" class="form-input" 
+                                           placeholder="e.g., Golden with white chest">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="petGender">Gender</label>
+                                    <select id="petGender" name="petGender" class="form-select">
+                                        <option value="">Select gender</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="neutered">Neutered Male</option>
+                                        <option value="spayed">Spayed Female</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Owner Information -->
+                        <fieldset class="form-fieldset">
+                            <legend>Owner Information</legend>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="ownerName">Owner Name *</label>
+                                <input type="text" id="ownerName" name="ownerName" class="form-input" 
+                                       placeholder="Enter your full name" required>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="primaryPhone">Primary Phone *</label>
+                                    <input type="tel" id="primaryPhone" name="primaryPhone" class="form-input" 
+                                           placeholder="(555) 123-4567" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="secondaryPhone">Secondary Phone</label>
+                                    <input type="tel" id="secondaryPhone" name="secondaryPhone" class="form-input" 
+                                           placeholder="(555) 987-6543">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="email">Email Address</label>
+                                <input type="email" id="email" name="email" class="form-input" 
+                                       placeholder="your.email@example.com">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="address">Home Address</label>
+                                <textarea id="address" name="address" class="form-textarea" rows="3"
+                                          placeholder="Enter your full address"></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Emergency Contact -->
+                        <fieldset class="form-fieldset">
+                            <legend>Emergency Contact</legend>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="emergencyName">Emergency Contact Name</label>
+                                    <input type="text" id="emergencyName" name="emergencyName" class="form-input" 
+                                           placeholder="Friend or family member">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="emergencyPhone">Emergency Contact Phone</label>
+                                    <input type="tel" id="emergencyPhone" name="emergencyPhone" class="form-input" 
+                                           placeholder="(555) 123-4567">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="emergencyRelation">Relationship</label>
+                                <input type="text" id="emergencyRelation" name="emergencyRelation" class="form-input" 
+                                       placeholder="e.g., Spouse, Parent, Friend">
+                            </div>
+                        </fieldset>
+
+                        <!-- Additional Information -->
+                        <fieldset class="form-fieldset">
+                            <legend>Additional Information</legend>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="specialInstructions">Special Instructions</label>
+                                <textarea id="specialInstructions" name="specialInstructions" class="form-textarea" rows="4"
+                                          placeholder="Any special instructions for someone who finds your pet..."></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="reward">Reward Information</label>
+                                <input type="text" id="reward" name="reward" class="form-input" 
+                                       placeholder="e.g., $100 reward for safe return">
+                            </div>
+                        </fieldset>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i data-feather="save"></i>
+                                Save Contact Information
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="router.navigateTo('/')">
+                                <i data-feather="arrow-left"></i>
+                                Back to Dashboard
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Contact Summary Card -->
+            <div class="card contact-summary-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="info"></i>
+                        Contact Summary
+                    </h2>
+                    <button class="btn btn-outline btn-sm" onclick="contactPage.generateQR()">
+                        <i data-feather="qr-code"></i>
+                        QR Code
+                    </button>
+                </div>
+                <div class="card-content">
+                    <div id="contact-summary">
+                        <p class="text-muted">Contact information will appear here after saving</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions Card -->
+            <div class="card quick-actions-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="zap"></i>
+                        Quick Actions
+                    </h2>
+                </div>
+                <div class="card-content">
+                    <div class="quick-actions">
+                        <button class="btn btn-outline" onclick="contactPage.testContacts()">
+                            <i data-feather="phone"></i>
+                            Test Phone Numbers
+                        </button>
+                        <button class="btn btn-outline" onclick="contactPage.shareContact()">
+                            <i data-feather="share-2"></i>
+                            Share Contact Info
+                        </button>
+                        <button class="btn btn-outline" onclick="contactPage.printContactCard()">
+                            <i data-feather="printer"></i>
+                            Print Contact Card
+                        </button>
+                        <button class="btn btn-danger" onclick="contactPage.reportLost()">
+                            <i data-feather="alert-triangle"></i>
+                            Report Pet Lost
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- QR Code Modal -->
+<div class="qr-modal" id="qr-modal" style="display: none;">
+    <div class="qr-content">
+        <div class="qr-header">
+            <h3>Contact QR Code</h3>
+            <button class="btn btn-sm" onclick="contactPage.closeQRModal()">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+        <div class="qr-body">
+            <div id="qr-code-container"></div>
+            <p>Scan this QR code to quickly access your pet's contact information</p>
+            <div class="qr-actions">
+                <button class="btn btn-primary" onclick="contactPage.downloadQR()">
+                    <i data-feather="download"></i>
+                    Download QR Code
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

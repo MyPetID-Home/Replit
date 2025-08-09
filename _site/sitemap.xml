@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd" xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url>
+<loc>http://0.0.0.0:5000/</loc>
+</url>
+<url>
+<loc>http://0.0.0.0:5000/privacy.html</loc>
+</url>
+<url>
+<loc>http://0.0.0.0:5000/tos.html</loc>
+</url>
+<url>
+<loc>http://0.0.0.0:5000/pages/contact/page.html</loc>
+<lastmod>2025-08-08T00:13:38+00:00</lastmod>
+</url>
+<url>
+<loc>http://0.0.0.0:5000/pages/home/page.html</loc>
+<lastmod>2025-08-08T00:12:01+00:00</lastmod>
+</url>
+<url>
+<loc>http://0.0.0.0:5000/pages/location/page.html</loc>
+<lastmod>2025-08-08T00:16:50+00:00</lastmod>
+</url>
+<url>
+<loc>http://0.0.0.0:5000/pages/medical/page.html</loc>
+<lastmod>2025-08-08T00:19:55+00:00</lastmod>
+</url>
+</urlset>

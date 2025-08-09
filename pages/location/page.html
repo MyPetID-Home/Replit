@@ -1,0 +1,249 @@
+<div class="location-page">
+    <div class="page-header">
+        <h1>
+            <i data-feather="map-pin"></i>
+            Location Tracking
+        </h1>
+        <p class="page-subtitle">Track and monitor your pet's location in real-time</p>
+    </div>
+
+    <div class="location-content">
+        <div class="location-grid">
+            <!-- Map Container -->
+            <div class="card map-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="map"></i>
+                        Live Location Map
+                    </h2>
+                    <div class="map-controls">
+                        <button class="btn btn-outline btn-sm" onclick="locationPage.refreshLocation()">
+                            <i data-feather="refresh-cw"></i>
+                            Refresh
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="locationPage.centerMap()">
+                            <i data-feather="target"></i>
+                            Center
+                        </button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div id="location-map" class="location-map">
+                        <div class="map-placeholder">
+                            <i data-feather="map"></i>
+                            <p>Interactive map will load here</p>
+                            <button class="btn btn-primary" onclick="locationPage.initializeMap()">
+                                <i data-feather="play"></i>
+                                Load Map
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Location Status -->
+            <div class="card status-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="activity"></i>
+                        Location Status
+                    </h2>
+                    <div class="location-status" id="location-status">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Unknown</span>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div id="current-location-info">
+                        <p class="text-muted">No location data available</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card actions-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="zap"></i>
+                        Location Actions
+                    </h2>
+                </div>
+                <div class="card-content">
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="locationPage.updateCurrentLocation()">
+                            <i data-feather="crosshair"></i>
+                            Update Location
+                        </button>
+                        <button class="btn btn-secondary" onclick="locationPage.shareLocation()">
+                            <i data-feather="share-2"></i>
+                            Share Location
+                        </button>
+                        <button class="btn btn-secondary" onclick="locationPage.viewHistory()">
+                            <i data-feather="clock"></i>
+                            Location History
+                        </button>
+                        <button class="btn btn-warning" onclick="locationPage.setGeofence()">
+                            <i data-feather="shield"></i>
+                            Set Safe Zone
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Location History -->
+            <div class="card history-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="clock"></i>
+                        Recent Locations
+                    </h2>
+                    <button class="btn btn-outline btn-sm" onclick="locationPage.exportHistory()">
+                        <i data-feather="download"></i>
+                        Export
+                    </button>
+                </div>
+                <div class="card-content">
+                    <div class="location-history" id="location-history">
+                        <p class="text-muted">No location history available</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Location Analytics -->
+            <div class="card analytics-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="bar-chart-2"></i>
+                        Location Analytics
+                    </h2>
+                </div>
+                <div class="card-content">
+                    <div class="analytics-grid" id="location-analytics">
+                        <div class="analytics-item">
+                            <div class="analytics-label">Total Distance</div>
+                            <div class="analytics-value" id="total-distance">--</div>
+                        </div>
+                        <div class="analytics-item">
+                            <div class="analytics-label">Locations Today</div>
+                            <div class="analytics-value" id="locations-today">--</div>
+                        </div>
+                        <div class="analytics-item">
+                            <div class="analytics-label">Last Update</div>
+                            <div class="analytics-value" id="last-update">--</div>
+                        </div>
+                        <div class="analytics-item">
+                            <div class="analytics-label">Accuracy</div>
+                            <div class="analytics-value" id="location-accuracy">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Geofencing -->
+            <div class="card geofence-card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i data-feather="shield"></i>
+                        Safe Zones
+                    </h2>
+                    <button class="btn btn-outline btn-sm" onclick="locationPage.addGeofence()">
+                        <i data-feather="plus"></i>
+                        Add Zone
+                    </button>
+                </div>
+                <div class="card-content">
+                    <div id="geofence-list">
+                        <p class="text-muted">No safe zones configured</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Location History Modal -->
+<div class="location-modal" id="history-modal" style="display: none;">
+    <div class="modal-content-large">
+        <div class="modal-header">
+            <h3>Location History</h3>
+            <button class="btn btn-sm" onclick="locationPage.closeHistoryModal()">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="history-filters">
+                <select id="history-filter" onchange="locationPage.filterHistory()">
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                </select>
+                <button class="btn btn-outline btn-sm" onclick="locationPage.refreshHistory()">
+                    <i data-feather="refresh-cw"></i>
+                    Refresh
+                </button>
+            </div>
+            <div id="detailed-history" class="detailed-history">
+                <p class="text-muted">Loading history...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Geofence Setup Modal -->
+<div class="location-modal" id="geofence-modal" style="display: none;">
+    <div class="modal-content-medium">
+        <div class="modal-header">
+            <h3>Create Safe Zone</h3>
+            <button class="btn btn-sm" onclick="locationPage.closeGeofenceModal()">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="locationPage.saveGeofence(event)">
+                <div class="form-group">
+                    <label class="form-label">Zone Name:</label>
+                    <input type="text" name="zoneName" class="form-input" 
+                           placeholder="e.g., Home, Park, Vet Clinic" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Center Location:</label>
+                    <div class="location-input-group">
+                        <input type="text" name="centerLocation" class="form-input" 
+                               placeholder="Enter address or coordinates" required>
+                        <button type="button" class="btn btn-outline" onclick="locationPage.useCurrentLocation()">
+                            <i data-feather="crosshair"></i>
+                            Use Current
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Radius (meters):</label>
+                    <input type="number" name="radius" class="form-input" 
+                           value="100" min="10" max="5000" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Alert Type:</label>
+                    <select name="alertType" class="form-select">
+                        <option value="exit">Alert when leaving zone</option>
+                        <option value="enter">Alert when entering zone</option>
+                        <option value="both">Alert for both entry and exit</option>
+                    </select>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i data-feather="shield"></i>
+                        Create Safe Zone
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="locationPage.closeGeofenceModal()">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

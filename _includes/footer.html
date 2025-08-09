@@ -1,0 +1,710 @@
+<footer class="footer-container">
+    <div class="footer-content">
+        <div class="footer-grid">
+            <!-- Branding Section -->
+            <div class="footer-section footer-brand">
+                <div class="footer-logo">
+                    <i data-feather="heart"></i>
+                    <span>Pet Tracker</span>
+                </div>
+                <p class="footer-description">
+                    Advanced pet tracking and management system using NFC technology to keep your beloved pets safe.
+                </p>
+                <div class="footer-social">
+                    <a href="https://github.com/pet-tracker" class="footer-social-link" target="_blank" rel="noopener">
+                        <i data-feather="github"></i>
+                        <span class="sr-only">GitHub</span>
+                    </a>
+                    <a href="https://patreon.com/pet-tracker" class="footer-social-link" target="_blank" rel="noopener">
+                        <i data-feather="external-link"></i>
+                        <span class="sr-only">Patreon</span>
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Quick Links -->
+            <div class="footer-section">
+                <h3 class="footer-title">Quick Links</h3>
+                <ul class="footer-links">
+                    <li><a href="{{ '/' | relative_url }}" class="footer-link">Dashboard</a></li>
+                    <li><a href="#contact" class="footer-link" onclick="router.navigateTo('/contact')">Contact Info</a></li>
+                    <li><a href="#location" class="footer-link" onclick="router.navigateTo('/location')">Location Tracking</a></li>
+                    <li><a href="#medical" class="footer-link" onclick="router.navigateTo('/medical')">Medical Records</a></li>
+                </ul>
+            </div>
+            
+            <!-- Resources -->
+            <div class="footer-section">
+                <h3 class="footer-title">Resources</h3>
+                <ul class="footer-links">
+                    <li><a href="{{ '/privacy.html' | relative_url }}" class="footer-link">Privacy Policy</a></li>
+                    <li><a href="{{ '/tos.html' | relative_url }}" class="footer-link">Terms of Service</a></li>
+                    <li><a href="https://github.com/pet-tracker/issues" class="footer-link" target="_blank" rel="noopener">Support</a></li>
+                    <li><a href="https://github.com/pet-tracker/wiki" class="footer-link" target="_blank" rel="noopener">Documentation</a></li>
+                </ul>
+            </div>
+            
+            <!-- Status & Info -->
+            <div class="footer-section">
+                <h3 class="footer-title">System Status</h3>
+                <div class="footer-status">
+                    <div class="status-item">
+                        <div class="status-indicator" id="github-status">
+                            <span class="status-dot status-unknown"></span>
+                            <span class="status-text">GitHub: Checking...</span>
+                        </div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-indicator" id="mongodb-status">
+                            <span class="status-dot status-unknown"></span>
+                            <span class="status-text">Database: Checking...</span>
+                        </div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-indicator" id="nfc-status">
+                            <span class="status-dot status-offline"></span>
+                            <span class="status-text">NFC: Not Connected</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions -->
+                <div class="footer-actions">
+                    <button class="btn btn-sm btn-outline" onclick="checkSystemStatus()">
+                        <i data-feather="refresh-cw"></i>
+                        Check Status
+                    </button>
+                    <button class="btn btn-sm btn-outline" onclick="showSystemInfo()">
+                        <i data-feather="info"></i>
+                        System Info
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer Bottom -->
+        <div class="footer-bottom">
+            <div class="footer-bottom-content">
+                <div class="footer-copyright">
+                    <p>&copy; {{ 'now' | date: "%Y" }} Pet Tracker. Open source project powered by GitHub Pages.</p>
+                </div>
+                
+                <div class="footer-build-info">
+                    <span class="build-info" id="build-info">
+                        Built with Jekyll • Last updated: <span id="last-updated">{{ site.time | date: "%b %d, %Y" }}</span>
+                    </span>
+                </div>
+                
+                <div class="footer-version">
+                    <span class="version-info" id="version-info">
+                        v1.0.0-beta
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<script>
+// Footer functionality
+document.addEventListener('DOMContentLoaded', function() {
+    initializeFooter();
+});
+
+function initializeFooter() {
+    // Check initial system status
+    checkSystemStatus();
+    
+    // Set up periodic status checks
+    setInterval(checkSystemStatus, 300000); // Check every 5 minutes
+    
+    // Update NFC status when app changes
+    if (window.app) {
+        // Listen for NFC tag changes
+        const originalSetNFCTag = window.app.setNFCTag;
+        window.app.setNFCTag = function(tagId) {
+            originalSetNFCTag.call(this, tagId);
+            updateNFCStatus(tagId);
+        };
+    }
+    
+    // Update build info
+    updateBuildInfo();
+}
+
+async function checkSystemStatus() {
+    // Check GitHub Pages status
+    updateStatus('github-status', 'checking', 'GitHub: Checking...');
+    
+    try {
+        // Test if we can access the current page (indicates GitHub Pages is working)
+        const response = await fetch(window.location.href, { 
+            method: 'HEAD',
+            cache: 'no-cache'
+        });
+        
+        if (response.ok) {
+            updateStatus('github-status', 'online', 'GitHub: Online');
+        } else {
+            updateStatus('github-status', 'warning', 'GitHub: Degraded');
+        }
+    } catch (error) {
+        updateStatus('github-status', 'offline', 'GitHub: Offline');
+    }
+    
+    // Check MongoDB/Database connectivity
+    updateStatus('mongodb-status', 'checking', 'Database: Checking...');
+    
+    try {
+        // This would typically ping a health endpoint
+        // For now, we'll check if we have successful recent operations
+        const hasRecentData = localStorage.getItem('petTracker_lastSync');
+        const lastSync = hasRecentData ? new Date(hasRecentData) : null;
+        const isRecent = lastSync && (Date.now() - lastSync.getTime()) < 3600000; // 1 hour
+        
+        if (isRecent) {
+            updateStatus('mongodb-status', 'online', 'Database: Synced');
+        } else {
+            updateStatus('mongodb-status', 'warning', 'Database: Stale');
+        }
+    } catch (error) {
+        updateStatus('mongodb-status', 'offline', 'Database: Error');
+    }
+    
+    // Update NFC status
+    updateNFCStatus(window.app?.nfcTagId);
+}
+
+function updateStatus(elementId, status, text) {
+    const statusElement = document.getElementById(elementId);
+    if (!statusElement) return;
+    
+    const statusDot = statusElement.querySelector('.status-dot');
+    const statusText = statusElement.querySelector('.status-text');
+    
+    // Remove existing status classes
+    statusDot.classList.remove('status-online', 'status-offline', 'status-warning', 'status-unknown', 'status-checking');
+    
+    // Add new status class
+    statusDot.classList.add(`status-${status}`);
+    statusText.textContent = text;
+}
+
+function updateNFCStatus(nfcTagId) {
+    if (nfcTagId) {
+        updateStatus('nfc-status', 'online', `NFC: Connected (${nfcTagId})`);
+    } else {
+        updateStatus('nfc-status', 'offline', 'NFC: Not Connected');
+    }
+}
+
+function updateBuildInfo() {
+    const buildInfoElement = document.getElementById('build-info');
+    const lastUpdatedElement = document.getElementById('last-updated');
+    const versionInfoElement = document.getElementById('version-info');
+    
+    // Update last updated time
+    if (lastUpdatedElement) {
+        lastUpdatedElement.textContent = new Date().toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    }
+    
+    // Update version with git commit if available
+    if (versionInfoElement) {
+        const gitCommit = getGitCommit();
+        if (gitCommit) {
+            versionInfoElement.textContent = `v1.0.0-beta (${gitCommit})`;
+        }
+    }
+}
+
+function getGitCommit() {
+    // This would typically be injected during build
+    // For GitHub Pages, we can extract from meta tags or environment
+    const metaCommit = document.querySelector('meta[name="git-commit"]');
+    return metaCommit ? metaCommit.content.substring(0, 7) : null;
+}
+
+function showSystemInfo() {
+    const systemInfo = {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language,
+        cookieEnabled: navigator.cookieEnabled,
+        onLine: navigator.onLine,
+        screen: `${screen.width}x${screen.height}`,
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+        localStorage: isLocalStorageAvailable(),
+        sessionStorage: isSessionStorageAvailable(),
+        nfcSupported: 'NDEFReader' in window,
+        geolocationSupported: 'geolocation' in navigator,
+        currentUrl: window.location.href,
+        referrer: document.referrer || 'Direct',
+        timestamp: new Date().toISOString()
+    };
+    
+    let capabilitiesInfo = '';
+    if (window.app?.nfcTagId) {
+        capabilitiesInfo += `**Connected NFC Tag:** ${window.app.nfcTagId}\n`;
+    }
+    if (window.app?.auth?.isAuthenticated) {
+        capabilitiesInfo += `**Patreon Authentication:** Active\n`;
+        capabilitiesInfo += `**User:** ${window.app.auth.currentUser?.fullName || 'Unknown'}\n`;
+    }
+    
+    const infoContent = `
+        <div class="system-info-modal">
+            <h3>System Information</h3>
+            
+            <div class="info-section">
+                <h4>Application Status</h4>
+                <div class="info-grid">
+                    ${capabilitiesInfo || '<p class="text-muted">No active connections</p>'}
+                </div>
+            </div>
+            
+            <div class="info-section">
+                <h4>Browser Capabilities</h4>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <strong>NFC Support:</strong> ${systemInfo.nfcSupported ? '✅ Available' : '❌ Not Available'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Geolocation:</strong> ${systemInfo.geolocationSupported ? '✅ Available' : '❌ Not Available'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Local Storage:</strong> ${systemInfo.localStorage ? '✅ Available' : '❌ Not Available'}
+                    </div>
+                    <div class="info-item">
+                        <strong>Online Status:</strong> ${systemInfo.onLine ? '✅ Online' : '❌ Offline'}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info-section">
+                <h4>Technical Details</h4>
+                <div class="info-details">
+                    <div class="info-item">
+                        <strong>User Agent:</strong><br>
+                        <code>${systemInfo.userAgent}</code>
+                    </div>
+                    <div class="info-item">
+                        <strong>Platform:</strong> ${systemInfo.platform}
+                    </div>
+                    <div class="info-item">
+                        <strong>Language:</strong> ${systemInfo.language}
+                    </div>
+                    <div class="info-item">
+                        <strong>Screen Resolution:</strong> ${systemInfo.screen}
+                    </div>
+                    <div class="info-item">
+                        <strong>Viewport:</strong> ${systemInfo.viewport}
+                    </div>
+                    <div class="info-item">
+                        <strong>Generated:</strong> ${systemInfo.timestamp}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info-actions">
+                <button class="btn btn-outline" onclick="copySystemInfo()">
+                    <i data-feather="copy"></i>
+                    Copy Info
+                </button>
+                <button class="btn btn-primary" onclick="window.app.hideModal()">
+                    Close
+                </button>
+            </div>
+        </div>
+    `;
+    
+    window.app?.showModal(infoContent, 'System Information');
+    
+    // Store system info for copying
+    window._systemInfo = systemInfo;
+    
+    // Initialize feather icons in modal
+    if (window.feather) {
+        feather.replace();
+    }
+}
+
+function copySystemInfo() {
+    if (!window._systemInfo) return;
+    
+    const infoText = Object.entries(window._systemInfo)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+    
+    navigator.clipboard.writeText(infoText).then(() => {
+        window.app?.showToast('System information copied to clipboard', 'success');
+    }).catch(error => {
+        console.error('Failed to copy system info:', error);
+        window.app?.showToast('Failed to copy system information', 'error');
+    });
+}
+
+function isLocalStorageAvailable() {
+    try {
+        const test = '__localStorage_test__';
+        localStorage.setItem(test, test);
+        localStorage.removeItem(test);
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+function isSessionStorageAvailable() {
+    try {
+        const test = '__sessionStorage_test__';
+        sessionStorage.setItem(test, test);
+        sessionStorage.removeItem(test);
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Update footer links to use router navigation
+document.addEventListener('click', function(event) {
+    const footerLink = event.target.closest('.footer-link[onclick]');
+    if (footerLink) {
+        event.preventDefault();
+        // onclick will handle navigation
+    }
+});
+</script>
+
+<style>
+/* Footer Styles */
+.footer-container {
+    background: var(--secondary-color);
+    border-top: 1px solid var(--border-color);
+    margin-top: auto;
+}
+
+.footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem 1rem;
+}
+
+.footer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.footer-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.footer-brand {
+    max-width: 300px;
+}
+
+.footer-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+.footer-description {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+.footer-social {
+    display: flex;
+    gap: 1rem;
+}
+
+.footer-social-link {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: var(--transition);
+}
+
+.footer-social-link:hover {
+    background: var(--accent-color);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.footer-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.footer-links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.footer-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: var(--transition);
+    padding: 0.25rem 0;
+}
+
+.footer-link:hover {
+    color: var(--accent-color);
+}
+
+/* Status Indicators */
+.footer-status {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-dot.status-online {
+    background: var(--success-color);
+    box-shadow: 0 0 8px rgba(40, 167, 69, 0.4);
+}
+
+.status-dot.status-offline {
+    background: var(--danger-color);
+}
+
+.status-dot.status-warning {
+    background: var(--warning-color);
+}
+
+.status-dot.status-unknown {
+    background: var(--text-muted);
+}
+
+.status-dot.status-checking {
+    background: var(--accent-color);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-text {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.footer-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.footer-actions .btn {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+}
+
+/* Footer Bottom */
+.footer-bottom {
+    border-top: 1px solid var(--border-color);
+    padding-top: 1rem;
+}
+
+.footer-bottom-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.footer-copyright p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.build-info,
+.version-info {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.build-info code {
+    background: var(--primary-color);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+/* System Info Modal */
+.system-info-modal h3 {
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.info-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.info-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.info-section h4 {
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    font-size: 1rem;
+}
+
+.info-grid {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.info-details {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.info-item strong {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.info-item code {
+    background: var(--primary-color);
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    word-break: break-all;
+    border: 1px solid var(--border-color);
+}
+
+.info-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Screen reader only content */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .footer-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .footer-bottom-content {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 0.5rem;
+    }
+    
+    .footer-actions {
+        width: 100%;
+    }
+    
+    .footer-actions .btn {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .info-actions {
+        flex-direction: column;
+    }
+    
+    .info-actions .btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .footer-content {
+        padding: 1.5rem 1rem 1rem;
+    }
+    
+    .footer-social {
+        justify-content: center;
+    }
+    
+    .footer-section {
+        text-align: center;
+    }
+    
+    .footer-links {
+        align-items: center;
+    }
+}
+</style>

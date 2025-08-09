@@ -1,0 +1,411 @@
+name: Location Tracking Workflow
+
+on:
+  repository_dispatch:
+    types: [location_update, emergency_location]
+  workflow_dispatch:
+    inputs:
+      nfc_tag_id:
+        description: 'NFC Tag ID'
+        required: true
+        type: string
+      latitude:
+        description: 'Latitude'
+        required: true
+        type: string
+      longitude:
+        description: 'Longitude'
+        required: true
+        type: string
+      accuracy:
+        description: 'Location Accuracy (meters)'
+        required: false
+        type: string
+        default: '10'
+      source:
+        description: 'Location Source'
+        required: false
+        type: choice
+        options:
+          - manual
+          - tasker
+          - automatic
+          - emergency
+        default: 'manual'
+
+env:
+  MONGODB_CONNECTION_STRING: ${{ secrets.MONGODB_CONNECTION_STRING }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  process_location_update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Extract location data
+        id: location_data
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "nfc_tag_id=${{ github.event.client_payload.nfc_tag_id }}" >> $GITHUB_OUTPUT
+            echo "latitude=${{ github.event.client_payload.latitude }}" >> $GITHUB_OUTPUT
+            echo "longitude=${{ github.event.client_payload.longitude }}" >> $GITHUB_OUTPUT
+            echo "accuracy=${{ github.event.client_payload.accuracy }}" >> $GITHUB_OUTPUT
+            echo "source=${{ github.event.client_payload.source }}" >> $GITHUB_OUTPUT
+            echo "timestamp=${{ github.event.client_payload.timestamp }}" >> $GITHUB_OUTPUT
+          else
+            echo "nfc_tag_id=${{ github.event.inputs.nfc_tag_id }}" >> $GITHUB_OUTPUT
+            echo "latitude=${{ github.event.inputs.latitude }}" >> $GITHUB_OUTPUT
+            echo "longitude=${{ github.event.inputs.longitude }}" >> $GITHUB_OUTPUT
+            echo "accuracy=${{ github.event.inputs.accuracy }}" >> $GITHUB_OUTPUT
+            echo "source=${{ github.event.inputs.source }}" >> $GITHUB_OUTPUT
+            echo "timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate location data
+        run: |
+          # Validate latitude
+          if ! echo "${{ steps.location_data.outputs.latitude }}" | grep -E '^-?[0-9]+\.?[0-9]*$'; then
+            echo "Error: Invalid latitude format"
+            exit 1
+          fi
+          
+          # Validate longitude
+          if ! echo "${{ steps.location_data.outputs.longitude }}" | grep -E '^-?[0-9]+\.?[0-9]*$'; then
+            echo "Error: Invalid longitude format"
+            exit 1
+          fi
+          
+          # Check latitude bounds
+          lat=$(echo "${{ steps.location_data.outputs.latitude }}" | bc)
+          if (( $(echo "$lat < -90 || $lat > 90" | bc -l) )); then
+            echo "Error: Latitude out of bounds (-90 to 90)"
+            exit 1
+          fi
+          
+          # Check longitude bounds
+          lng=$(echo "${{ steps.location_data.outputs.longitude }}" | bc)
+          if (( $(echo "$lng < -180 || $lng > 180" | bc -l) )); then
+            echo "Error: Longitude out of bounds (-180 to 180)"
+            exit 1
+          fi
+
+      - name: Create user directory structure
+        run: |
+          NFC_TAG_ID="${{ steps.location_data.outputs.nfc_tag_id }}"
+          USER_DIR="data/users/$NFC_TAG_ID"
+          
+          # Create directory if it doesn't exist
+          mkdir -p "$USER_DIR"
+          
+          # Create location.json if it doesn't exist
+          if [ ! -f "$USER_DIR/location.json" ]; then
+            echo '{"history": [], "lastKnown": null}' > "$USER_DIR/location.json"
+          fi
+
+      - name: Update location data
+        run: |
+          NFC_TAG_ID="${{ steps.location_data.outputs.nfc_tag_id }}"
+          USER_DIR="data/users/$NFC_TAG_ID"
+          LOCATION_FILE="$USER_DIR/location.json"
+          
+          # Create new location entry
+          NEW_LOCATION=$(cat <<EOF
+          {
+            "latitude": ${{ steps.location_data.outputs.latitude }},
+            "longitude": ${{ steps.location_data.outputs.longitude }},
+            "accuracy": ${{ steps.location_data.outputs.accuracy }},
+            "source": "${{ steps.location_data.outputs.source }}",
+            "timestamp": "${{ steps.location_data.outputs.timestamp }}"
+          }
+          EOF
+          )
+          
+          # Update location.json using jq
+          npm install -g jq
+          
+          # Add to history and update lastKnown
+          jq --argjson new_location "$NEW_LOCATION" '
+            .history += [$new_location] |
+            .lastKnown = $new_location |
+            if (.history | length) > 1000 then
+              .history = .history[-1000:]
+            else
+              .
+            end
+          ' "$LOCATION_FILE" > "$LOCATION_FILE.tmp" && mv "$LOCATION_FILE.tmp" "$LOCATION_FILE"
+
+      - name: Update MongoDB
+        if: env.MONGODB_CONNECTION_STRING != ''
+        run: |
+          # Install MongoDB tools
+          npm install mongodb
+
+          # Create Node.js script for MongoDB update
+          cat > update_mongodb.js << 'EOF'
+          const { MongoClient } = require('mongodb');
+          
+          async function updateLocation() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              const collection = db.collection('locations');
+              
+              const locationData = {
+                nfcTagId: process.env.NFC_TAG_ID,
+                latitude: parseFloat(process.env.LATITUDE),
+                longitude: parseFloat(process.env.LONGITUDE),
+                accuracy: parseFloat(process.env.ACCURACY),
+                source: process.env.SOURCE,
+                timestamp: new Date(process.env.TIMESTAMP)
+              };
+              
+              // Insert location record
+              await collection.insertOne(locationData);
+              
+              // Update user's last known location
+              const usersCollection = db.collection('users');
+              await usersCollection.updateOne(
+                { nfcTagId: process.env.NFC_TAG_ID },
+                { 
+                  $set: { 
+                    lastKnownLocation: locationData,
+                    lastUpdated: new Date()
+                  }
+                },
+                { upsert: true }
+              );
+              
+              console.log('Location data synchronized to MongoDB');
+            } catch (error) {
+              console.error('MongoDB sync error:', error);
+              process.exit(1);
+            } finally {
+              await client.close();
+            }
+          }
+          
+          updateLocation();
+          EOF
+          
+          # Run MongoDB update
+          NFC_TAG_ID="${{ steps.location_data.outputs.nfc_tag_id }}" \
+          LATITUDE="${{ steps.location_data.outputs.latitude }}" \
+          LONGITUDE="${{ steps.location_data.outputs.longitude }}" \
+          ACCURACY="${{ steps.location_data.outputs.accuracy }}" \
+          SOURCE="${{ steps.location_data.outputs.source }}" \
+          TIMESTAMP="${{ steps.location_data.outputs.timestamp }}" \
+          node update_mongodb.js
+
+      - name: Commit location update
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Add the updated location file
+          git add "data/users/${{ steps.location_data.outputs.nfc_tag_id }}/location.json"
+          
+          # Check if there are changes to commit
+          if ! git diff --staged --quiet; then
+            git commit -m "Location update for ${{ steps.location_data.outputs.nfc_tag_id }} at ${{ steps.location_data.outputs.timestamp }}"
+            git push
+          else
+            echo "No location changes to commit"
+          fi
+
+      - name: Create location tracking issue
+        if: steps.location_data.outputs.source == 'emergency'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const nfcTagId = '${{ steps.location_data.outputs.nfc_tag_id }}';
+            const latitude = '${{ steps.location_data.outputs.latitude }}';
+            const longitude = '${{ steps.location_data.outputs.longitude }}';
+            const timestamp = '${{ steps.location_data.outputs.timestamp }}';
+            const source = '${{ steps.location_data.outputs.source }}';
+            
+            const title = `🚨 Emergency Location Update - ${nfcTagId}`;
+            const body = `
+            **EMERGENCY LOCATION ALERT**
+            
+            Pet tracker **${nfcTagId}** has reported an emergency location update.
+            
+            **Location Details:**
+            - **Coordinates:** ${latitude}, ${longitude}
+            - **Timestamp:** ${timestamp}
+            - **Source:** ${source}
+            - **Accuracy:** ±${{ steps.location_data.outputs.accuracy }}m
+            - **Maps Link:** [View on Google Maps](https://maps.google.com/maps?q=${latitude},${longitude})
+            
+            **Next Steps:**
+            1. Verify the emergency status
+            2. Contact the pet owner immediately
+            3. Consider dispatching assistance if needed
+            4. Monitor for additional location updates
+            
+            This is an automated alert generated by the Pet Tracker system.
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['emergency', 'location-alert', 'high-priority', `tag-${nfcTagId}`]
+            });
+
+      - name: Check geofence violations
+        if: env.MONGODB_CONNECTION_STRING != ''
+        run: |
+          # Create Node.js script for geofence checking
+          cat > check_geofences.js << 'EOF'
+          const { MongoClient } = require('mongodb');
+          
+          function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Earth's radius in meters
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+          }
+          
+          async function checkGeofences() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              const geofencesCollection = db.collection('geofences');
+              
+              const nfcTagId = process.env.NFC_TAG_ID;
+              const currentLat = parseFloat(process.env.LATITUDE);
+              const currentLng = parseFloat(process.env.LONGITUDE);
+              
+              // Get active geofences for this tag
+              const geofences = await geofencesCollection.find({
+                nfcTagId: nfcTagId,
+                isActive: true
+              }).toArray();
+              
+              for (const geofence of geofences) {
+                const distance = calculateDistance(
+                  currentLat, currentLng,
+                  geofence.centerLat, geofence.centerLng
+                );
+                
+                const isInside = distance <= geofence.radius;
+                const wasInside = geofence.lastStatus === 'inside';
+                
+                if (isInside !== wasInside) {
+                  const event = isInside ? 'entered' : 'exited';
+                  
+                  if ((geofence.alertType === 'enter' && event === 'entered') ||
+                      (geofence.alertType === 'exit' && event === 'exited') ||
+                      geofence.alertType === 'both') {
+                    
+                    console.log(`GEOFENCE_ALERT=${event}:${geofence.name}:${geofence.id}`);
+                  }
+                  
+                  // Update geofence status
+                  await geofencesCollection.updateOne(
+                    { _id: geofence._id },
+                    { $set: { lastStatus: isInside ? 'inside' : 'outside' } }
+                  );
+                }
+              }
+              
+            } catch (error) {
+              console.error('Geofence check error:', error);
+            } finally {
+              await client.close();
+            }
+          }
+          
+          checkGeofences();
+          EOF
+          
+          # Run geofence check and capture output
+          NFC_TAG_ID="${{ steps.location_data.outputs.nfc_tag_id }}" \
+          LATITUDE="${{ steps.location_data.outputs.latitude }}" \
+          LONGITUDE="${{ steps.location_data.outputs.longitude }}" \
+          node check_geofences.js > geofence_results.txt
+          
+          # Check for geofence alerts
+          if grep -q "GEOFENCE_ALERT" geofence_results.txt; then
+            echo "GEOFENCE_VIOLATIONS=true" >> $GITHUB_ENV
+            cat geofence_results.txt >> $GITHUB_ENV
+          fi
+
+      - name: Create geofence violation issue
+        if: env.GEOFENCE_VIOLATIONS == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = fs.readFileSync('geofence_results.txt', 'utf8');
+            const alerts = results.match(/GEOFENCE_ALERT=(.+)/g);
+            
+            if (alerts) {
+              for (const alert of alerts) {
+                const [event, zoneName, geofenceId] = alert.replace('GEOFENCE_ALERT=', '').split(':');
+                
+                const title = `🚨 Geofence Alert - ${{ steps.location_data.outputs.nfc_tag_id }}`;
+                const body = `
+                **GEOFENCE VIOLATION DETECTED**
+                
+                Pet tracker **${{ steps.location_data.outputs.nfc_tag_id }}** has ${event} the safe zone "${zoneName}".
+                
+                **Alert Details:**
+                - **Event:** Pet ${event} safe zone
+                - **Zone Name:** ${zoneName}
+                - **Location:** ${{ steps.location_data.outputs.latitude }}, ${{ steps.location_data.outputs.longitude }}
+                - **Time:** ${{ steps.location_data.outputs.timestamp }}
+                - **Source:** ${{ steps.location_data.outputs.source }}
+                
+                **Maps Link:** [View Location](https://maps.google.com/maps?q=${{ steps.location_data.outputs.latitude }},${{ steps.location_data.outputs.longitude }})
+                
+                Please verify the pet's status and take appropriate action if needed.
+                `;
+                
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: title,
+                  body: body,
+                  labels: ['geofence-alert', event, `tag-${{ steps.location_data.outputs.nfc_tag_id }}`]
+                });
+              }
+            }
+
+      - name: Notify external services
+        if: steps.location_data.outputs.source == 'emergency'
+        run: |
+          echo "Emergency location update processed for ${{ steps.location_data.outputs.nfc_tag_id }}"
+          echo "Location: ${{ steps.location_data.outputs.latitude }}, ${{ steps.location_data.outputs.longitude }}"
+          echo "Timestamp: ${{ steps.location_data.outputs.timestamp }}"
+          
+          # Here you could add webhooks or other notification services
+          # Example: curl -X POST webhook_url with location data
+
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: process_location_update
+    if: always()
+    steps:
+      - name: Clean up temporary files
+        run: |
+          echo "Location tracking workflow completed"
+          # Clean up any temporary files or perform final logging

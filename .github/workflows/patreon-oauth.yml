@@ -1,0 +1,539 @@
+name: Patreon OAuth Workflow
+
+on:
+  repository_dispatch:
+    types: [patreon_oauth_callback, patreon_token_exchange]
+  workflow_dispatch:
+    inputs:
+      auth_code:
+        description: 'OAuth Authorization Code'
+        required: true
+        type: string
+      state:
+        description: 'OAuth State Parameter'
+        required: true
+        type: string
+      redirect_uri:
+        description: 'OAuth Redirect URI'
+        required: true
+        type: string
+
+env:
+  PATREON_CLIENT_ID: ${{ secrets.PATREON_CLIENT_ID }}
+  PATREON_CLIENT_SECRET: ${{ secrets.PATREON_CLIENT_SECRET }}
+  MONGODB_CONNECTION_STRING: ${{ secrets.MONGODB_CONNECTION_STRING }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  exchange_oauth_token:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Extract OAuth parameters
+        id: oauth_params
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "auth_code=${{ github.event.client_payload.code }}" >> $GITHUB_OUTPUT
+            echo "state=${{ github.event.client_payload.state }}" >> $GITHUB_OUTPUT
+            echo "redirect_uri=${{ github.event.client_payload.redirect_uri }}" >> $GITHUB_OUTPUT
+            echo "nfc_tag_id=${{ github.event.client_payload.nfc_tag_id }}" >> $GITHUB_OUTPUT
+          else
+            echo "auth_code=${{ github.event.inputs.auth_code }}" >> $GITHUB_OUTPUT
+            echo "state=${{ github.event.inputs.state }}" >> $GITHUB_OUTPUT
+            echo "redirect_uri=${{ github.event.inputs.redirect_uri }}" >> $GITHUB_OUTPUT
+            echo "nfc_tag_id=" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")" >> $GITHUB_OUTPUT
+
+      - name: Validate OAuth parameters
+        run: |
+          if [ -z "${{ env.PATREON_CLIENT_ID }}" ] || [ -z "${{ env.PATREON_CLIENT_SECRET }}" ]; then
+            echo "Error: Patreon OAuth credentials not configured"
+            exit 1
+          fi
+          
+          if [ -z "${{ steps.oauth_params.outputs.auth_code }}" ]; then
+            echo "Error: Authorization code is required"
+            exit 1
+          fi
+          
+          if [ -z "${{ steps.oauth_params.outputs.redirect_uri }}" ]; then
+            echo "Error: Redirect URI is required"
+            exit 1
+          fi
+
+      - name: Exchange authorization code for access token
+        id: token_exchange
+        run: |
+          npm install axios
+          
+          # Create Node.js script for token exchange
+          cat > exchange_token.js << 'EOF'
+          const axios = require('axios');
+          
+          async function exchangeToken() {
+            try {
+              const response = await axios.post('https://www.patreon.com/api/oauth2/token', {
+                code: process.env.AUTH_CODE,
+                grant_type: 'authorization_code',
+                client_id: process.env.PATREON_CLIENT_ID,
+                client_secret: process.env.PATREON_CLIENT_SECRET,
+                redirect_uri: process.env.REDIRECT_URI
+              }, {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded'
+                }
+              });
+              
+              const tokenData = response.data;
+              
+              console.log('ACCESS_TOKEN=' + tokenData.access_token);
+              console.log('REFRESH_TOKEN=' + (tokenData.refresh_token || ''));
+              console.log('TOKEN_TYPE=' + (tokenData.token_type || 'Bearer'));
+              console.log('EXPIRES_IN=' + (tokenData.expires_in || ''));
+              console.log('SCOPE=' + (tokenData.scope || ''));
+              
+            } catch (error) {
+              console.error('Token exchange failed:', error.response?.data || error.message);
+              process.exit(1);
+            }
+          }
+          
+          exchangeToken();
+          EOF
+          
+          # Run token exchange
+          AUTH_CODE="${{ steps.oauth_params.outputs.auth_code }}" \
+          REDIRECT_URI="${{ steps.oauth_params.outputs.redirect_uri }}" \
+          node exchange_token.js | tee token_result.txt
+          
+          # Extract token data
+          ACCESS_TOKEN=$(grep "ACCESS_TOKEN=" token_result.txt | cut -d'=' -f2)
+          REFRESH_TOKEN=$(grep "REFRESH_TOKEN=" token_result.txt | cut -d'=' -f2)
+          TOKEN_TYPE=$(grep "TOKEN_TYPE=" token_result.txt | cut -d'=' -f2)
+          EXPIRES_IN=$(grep "EXPIRES_IN=" token_result.txt | cut -d'=' -f2)
+          SCOPE=$(grep "SCOPE=" token_result.txt | cut -d'=' -f2)
+          
+          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          echo "refresh_token=$REFRESH_TOKEN" >> $GITHUB_OUTPUT
+          echo "token_type=$TOKEN_TYPE" >> $GITHUB_OUTPUT
+          echo "expires_in=$EXPIRES_IN" >> $GITHUB_OUTPUT
+          echo "scope=$SCOPE" >> $GITHUB_OUTPUT
+
+      - name: Fetch user information from Patreon
+        id: user_info
+        run: |
+          # Create Node.js script for user info retrieval
+          cat > fetch_user_info.js << 'EOF'
+          const axios = require('axios');
+          
+          async function fetchUserInfo() {
+            try {
+              const response = await axios.get('https://www.patreon.com/api/oauth2/v2/identity?include=memberships,memberships.currently_entitled_tiers&fields%5Buser%5D=email,first_name,last_name,full_name,image_url,is_email_verified&fields%5Bmember%5D=patron_status,pledge_relationship_start,lifetime_support_cents,currently_entitled_amount_cents', {
+                headers: {
+                  'Authorization': `${process.env.TOKEN_TYPE} ${process.env.ACCESS_TOKEN}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              const userData = response.data;
+              
+              console.log('USER_DATA=' + JSON.stringify(userData));
+              
+              // Extract key user information
+              const user = userData.data;
+              console.log('USER_ID=' + user.id);
+              console.log('USER_EMAIL=' + (user.attributes.email || ''));
+              console.log('USER_NAME=' + (user.attributes.full_name || ''));
+              console.log('USER_FIRST_NAME=' + (user.attributes.first_name || ''));
+              console.log('USER_LAST_NAME=' + (user.attributes.last_name || ''));
+              console.log('USER_IMAGE=' + (user.attributes.image_url || ''));
+              console.log('EMAIL_VERIFIED=' + (user.attributes.is_email_verified || false));
+              
+              // Extract membership information
+              const memberships = userData.included?.filter(item => item.type === 'member') || [];
+              console.log('MEMBERSHIP_COUNT=' + memberships.length);
+              
+              if (memberships.length > 0) {
+                const membership = memberships[0];
+                console.log('PATRON_STATUS=' + (membership.attributes.patron_status || ''));
+                console.log('LIFETIME_SUPPORT=' + (membership.attributes.lifetime_support_cents || 0));
+                console.log('CURRENT_SUPPORT=' + (membership.attributes.currently_entitled_amount_cents || 0));
+                console.log('PLEDGE_START=' + (membership.attributes.pledge_relationship_start || ''));
+              }
+              
+            } catch (error) {
+              console.error('User info fetch failed:', error.response?.data || error.message);
+              process.exit(1);
+            }
+          }
+          
+          fetchUserInfo();
+          EOF
+          
+          # Run user info fetch
+          ACCESS_TOKEN="${{ steps.token_exchange.outputs.access_token }}" \
+          TOKEN_TYPE="${{ steps.token_exchange.outputs.token_type }}" \
+          node fetch_user_info.js | tee user_info_result.txt
+          
+          # Extract user data
+          USER_ID=$(grep "USER_ID=" user_info_result.txt | cut -d'=' -f2)
+          USER_EMAIL=$(grep "USER_EMAIL=" user_info_result.txt | cut -d'=' -f2)
+          USER_NAME=$(grep "USER_NAME=" user_info_result.txt | cut -d'=' -f2)
+          USER_FIRST_NAME=$(grep "USER_FIRST_NAME=" user_info_result.txt | cut -d'=' -f2)
+          USER_LAST_NAME=$(grep "USER_LAST_NAME=" user_info_result.txt | cut -d'=' -f2)
+          USER_IMAGE=$(grep "USER_IMAGE=" user_info_result.txt | cut -d'=' -f2)
+          EMAIL_VERIFIED=$(grep "EMAIL_VERIFIED=" user_info_result.txt | cut -d'=' -f2)
+          PATRON_STATUS=$(grep "PATRON_STATUS=" user_info_result.txt | cut -d'=' -f2)
+          LIFETIME_SUPPORT=$(grep "LIFETIME_SUPPORT=" user_info_result.txt | cut -d'=' -f2)
+          CURRENT_SUPPORT=$(grep "CURRENT_SUPPORT=" user_info_result.txt | cut -d'=' -f2)
+          
+          echo "user_id=$USER_ID" >> $GITHUB_OUTPUT
+          echo "user_email=$USER_EMAIL" >> $GITHUB_OUTPUT
+          echo "user_name=$USER_NAME" >> $GITHUB_OUTPUT
+          echo "user_first_name=$USER_FIRST_NAME" >> $GITHUB_OUTPUT
+          echo "user_last_name=$USER_LAST_NAME" >> $GITHUB_OUTPUT
+          echo "user_image=$USER_IMAGE" >> $GITHUB_OUTPUT
+          echo "email_verified=$EMAIL_VERIFIED" >> $GITHUB_OUTPUT
+          echo "patron_status=$PATRON_STATUS" >> $GITHUB_OUTPUT
+          echo "lifetime_support=$LIFETIME_SUPPORT" >> $GITHUB_OUTPUT
+          echo "current_support=$CURRENT_SUPPORT" >> $GITHUB_OUTPUT
+
+      - name: Store authentication data in MongoDB
+        if: env.MONGODB_CONNECTION_STRING != ''
+        run: |
+          npm install mongodb
+          
+          # Create Node.js script for MongoDB storage
+          cat > store_auth_data.js << 'EOF'
+          const { MongoClient } = require('mongodb');
+          
+          async function storeAuthData() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              const collection = db.collection('user_auth');
+              
+              const authData = {
+                patreonUserId: process.env.USER_ID,
+                nfcTagId: process.env.NFC_TAG_ID || null,
+                accessToken: process.env.ACCESS_TOKEN,
+                refreshToken: process.env.REFRESH_TOKEN,
+                tokenType: process.env.TOKEN_TYPE,
+                expiresIn: parseInt(process.env.EXPIRES_IN) || null,
+                scope: process.env.SCOPE,
+                userInfo: {
+                  email: process.env.USER_EMAIL,
+                  fullName: process.env.USER_NAME,
+                  firstName: process.env.USER_FIRST_NAME,
+                  lastName: process.env.USER_LAST_NAME,
+                  imageUrl: process.env.USER_IMAGE,
+                  isEmailVerified: process.env.EMAIL_VERIFIED === 'true'
+                },
+                membershipInfo: {
+                  patronStatus: process.env.PATRON_STATUS,
+                  lifetimeSupport: parseInt(process.env.LIFETIME_SUPPORT) || 0,
+                  currentSupport: parseInt(process.env.CURRENT_SUPPORT) || 0
+                },
+                createdAt: new Date(process.env.TIMESTAMP),
+                lastUpdated: new Date(process.env.TIMESTAMP),
+                isActive: true
+              };
+              
+              // Calculate token expiration
+              if (authData.expiresIn) {
+                authData.expiresAt = new Date(Date.now() + (authData.expiresIn * 1000));
+              }
+              
+              // Upsert based on Patreon user ID
+              const result = await collection.replaceOne(
+                { patreonUserId: authData.patreonUserId },
+                authData,
+                { upsert: true }
+              );
+              
+              console.log(`Authentication data stored in MongoDB: ${result.upsertedId || 'updated existing'}`);
+              
+              // Also update the users collection if NFC tag is associated
+              if (process.env.NFC_TAG_ID) {
+                const usersCollection = db.collection('users');
+                await usersCollection.updateOne(
+                  { nfcTagId: process.env.NFC_TAG_ID },
+                  { 
+                    $set: { 
+                      patreonUserId: authData.patreonUserId,
+                      patreonAuth: {
+                        isAuthenticated: true,
+                        patronStatus: authData.membershipInfo.patronStatus,
+                        lastAuthUpdate: authData.lastUpdated
+                      }
+                    }
+                  },
+                  { upsert: true }
+                );
+                
+                console.log(`User record updated for NFC tag: ${process.env.NFC_TAG_ID}`);
+              }
+              
+            } catch (error) {
+              console.error('MongoDB storage error:', error);
+              process.exit(1);
+            } finally {
+              await client.close();
+            }
+          }
+          
+          storeAuthData();
+          EOF
+          
+          # Run MongoDB storage
+          USER_ID="${{ steps.user_info.outputs.user_id }}" \
+          NFC_TAG_ID="${{ steps.oauth_params.outputs.nfc_tag_id }}" \
+          ACCESS_TOKEN="${{ steps.token_exchange.outputs.access_token }}" \
+          REFRESH_TOKEN="${{ steps.token_exchange.outputs.refresh_token }}" \
+          TOKEN_TYPE="${{ steps.token_exchange.outputs.token_type }}" \
+          EXPIRES_IN="${{ steps.token_exchange.outputs.expires_in }}" \
+          SCOPE="${{ steps.token_exchange.outputs.scope }}" \
+          USER_EMAIL="${{ steps.user_info.outputs.user_email }}" \
+          USER_NAME="${{ steps.user_info.outputs.user_name }}" \
+          USER_FIRST_NAME="${{ steps.user_info.outputs.user_first_name }}" \
+          USER_LAST_NAME="${{ steps.user_info.outputs.user_last_name }}" \
+          USER_IMAGE="${{ steps.user_info.outputs.user_image }}" \
+          EMAIL_VERIFIED="${{ steps.user_info.outputs.email_verified }}" \
+          PATRON_STATUS="${{ steps.user_info.outputs.patron_status }}" \
+          LIFETIME_SUPPORT="${{ steps.user_info.outputs.lifetime_support }}" \
+          CURRENT_SUPPORT="${{ steps.user_info.outputs.current_support }}" \
+          TIMESTAMP="${{ steps.oauth_params.outputs.timestamp }}" \
+          node store_auth_data.js
+
+      - name: Create user authentication data file
+        run: |
+          NFC_TAG_ID="${{ steps.oauth_params.outputs.nfc_tag_id }}"
+          
+          if [ -n "$NFC_TAG_ID" ]; then
+            # Create user directory if it doesn't exist
+            USER_DIR="data/users/$NFC_TAG_ID"
+            mkdir -p "$USER_DIR"
+            
+            # Create or update auth.json
+            AUTH_FILE="$USER_DIR/auth.json"
+            
+            cat > "$AUTH_FILE" << EOF
+          {
+            "patreonUserId": "${{ steps.user_info.outputs.user_id }}",
+            "userInfo": {
+              "email": "${{ steps.user_info.outputs.user_email }}",
+              "fullName": "${{ steps.user_info.outputs.user_name }}",
+              "firstName": "${{ steps.user_info.outputs.user_first_name }}",
+              "lastName": "${{ steps.user_info.outputs.user_last_name }}",
+              "imageUrl": "${{ steps.user_info.outputs.user_image }}",
+              "isEmailVerified": ${{ steps.user_info.outputs.email_verified }}
+            },
+            "membershipInfo": {
+              "patronStatus": "${{ steps.user_info.outputs.patron_status }}",
+              "lifetimeSupport": ${{ steps.user_info.outputs.lifetime_support }},
+              "currentSupport": ${{ steps.user_info.outputs.current_support }}
+            },
+            "authenticatedAt": "${{ steps.oauth_params.outputs.timestamp }}",
+            "isActive": true
+          }
+          EOF
+            
+            # Update profile.json if it exists
+            PROFILE_FILE="$USER_DIR/profile.json"
+            if [ -f "$PROFILE_FILE" ]; then
+              npm install -g jq
+              
+              jq --arg patreon_id "${{ steps.user_info.outputs.user_id }}" \
+                 --arg email "${{ steps.user_info.outputs.user_email }}" \
+                 --arg name "${{ steps.user_info.outputs.user_name }}" \
+                 '. + {
+                   "patreonUserId": $patreon_id,
+                   "ownerEmail": (if .ownerEmail == "" or .ownerEmail == null then $email else .ownerEmail end),
+                   "ownerName": (if .ownerName == "" or .ownerName == null then $name else .ownerName end),
+                   "lastAuthUpdate": "${{ steps.oauth_params.outputs.timestamp }}"
+                 }' "$PROFILE_FILE" > "$PROFILE_FILE.tmp" && mv "$PROFILE_FILE.tmp" "$PROFILE_FILE"
+            fi
+          fi
+
+      - name: Commit authentication data
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          NFC_TAG_ID="${{ steps.oauth_params.outputs.nfc_tag_id }}"
+          
+          if [ -n "$NFC_TAG_ID" ]; then
+            # Add the authentication files
+            git add "data/users/$NFC_TAG_ID/"
+            
+            # Check if there are changes to commit
+            if ! git diff --staged --quiet; then
+              git commit -m "Patreon authentication completed for $NFC_TAG_ID"
+              git push
+            else
+              echo "No authentication changes to commit"
+            fi
+          fi
+
+      - name: Create authentication success issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const nfcTagId = '${{ steps.oauth_params.outputs.nfc_tag_id }}';
+            const userName = '${{ steps.user_info.outputs.user_name }}';
+            const patronStatus = '${{ steps.user_info.outputs.patron_status }}';
+            const currentSupport = '${{ steps.user_info.outputs.current_support }}';
+            
+            const title = `✅ Patreon Authentication Successful${nfcTagId ? ` - ${nfcTagId}` : ''}`;
+            const body = `
+            **Patreon Authentication Completed**
+            
+            **User Information:**
+            - **Name:** ${userName || 'Not provided'}
+            - **Email:** ${{ steps.user_info.outputs.user_email }}
+            - **Patreon ID:** ${{ steps.user_info.outputs.user_id }}
+            ${nfcTagId ? `- **NFC Tag:** ${nfcTagId}` : ''}
+            
+            **Membership Status:**
+            - **Patron Status:** ${patronStatus || 'Not a patron'}
+            - **Current Support:** $${(parseInt(currentSupport) / 100).toFixed(2)} per month
+            - **Lifetime Support:** $${(parseInt('${{ steps.user_info.outputs.lifetime_support }}') / 100).toFixed(2)}
+            
+            **Premium Features:**
+            ${patronStatus === 'active_patron' ? '✅ Premium features enabled' : '❌ Premium features not available'}
+            
+            **Authentication Details:**
+            - **Authenticated At:** ${{ steps.oauth_params.outputs.timestamp }}
+            - **Token Expires:** ${parseInt('${{ steps.token_exchange.outputs.expires_in }}') ? `${Math.round(parseInt('${{ steps.token_exchange.outputs.expires_in }}') / 3600)} hours` : 'Never'}
+            
+            The user has been successfully authenticated with Patreon and their membership status has been recorded.
+            `;
+            
+            const labels = ['authentication', 'patreon', 'success'];
+            if (nfcTagId) labels.push(`tag-${nfcTagId}`);
+            if (patronStatus === 'active_patron') labels.push('premium-user');
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: labels
+            });
+
+      - name: Log authentication summary
+        run: |
+          echo "Patreon OAuth Summary:"
+          echo "======================="
+          echo "User ID: ${{ steps.user_info.outputs.user_id }}"
+          echo "User Name: ${{ steps.user_info.outputs.user_name }}"
+          echo "Email: ${{ steps.user_info.outputs.user_email }}"
+          echo "Patron Status: ${{ steps.user_info.outputs.patron_status }}"
+          echo "Current Support: \$$(echo 'scale=2; ${{ steps.user_info.outputs.current_support }} / 100' | bc)"
+          echo "NFC Tag: ${{ steps.oauth_params.outputs.nfc_tag_id }}"
+          echo "Authenticated At: ${{ steps.oauth_params.outputs.timestamp }}"
+          echo "======================="
+
+  refresh_token:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'refresh_patreon_token'
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Refresh Patreon access token
+        run: |
+          npm install axios mongodb
+          
+          # Create Node.js script for token refresh
+          cat > refresh_token.js << 'EOF'
+          const axios = require('axios');
+          const { MongoClient } = require('mongodb');
+          
+          async function refreshToken() {
+            const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING);
+            
+            try {
+              await client.connect();
+              const db = client.db('pet_tracker');
+              const collection = db.collection('user_auth');
+              
+              // Find tokens that need refreshing (expire within 1 hour)
+              const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+              const expiredTokens = await collection.find({
+                isActive: true,
+                expiresAt: { $lt: oneHourFromNow },
+                refreshToken: { $exists: true, $ne: null }
+              }).toArray();
+              
+              for (const authRecord of expiredTokens) {
+                try {
+                  const response = await axios.post('https://www.patreon.com/api/oauth2/token', {
+                    grant_type: 'refresh_token',
+                    refresh_token: authRecord.refreshToken,
+                    client_id: process.env.PATREON_CLIENT_ID,
+                    client_secret: process.env.PATREON_CLIENT_SECRET
+                  }, {
+                    headers: {
+                      'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                  });
+                  
+                  const tokenData = response.data;
+                  
+                  // Update the auth record
+                  await collection.updateOne(
+                    { _id: authRecord._id },
+                    {
+                      $set: {
+                        accessToken: tokenData.access_token,
+                        refreshToken: tokenData.refresh_token || authRecord.refreshToken,
+                        expiresAt: new Date(Date.now() + (tokenData.expires_in * 1000)),
+                        lastUpdated: new Date()
+                      }
+                    }
+                  );
+                  
+                  console.log(`Refreshed token for user: ${authRecord.patreonUserId}`);
+                  
+                } catch (error) {
+                  console.error(`Failed to refresh token for user ${authRecord.patreonUserId}:`, error.response?.data || error.message);
+                  
+                  // Mark as inactive if refresh fails
+                  await collection.updateOne(
+                    { _id: authRecord._id },
+                    { $set: { isActive: false, lastError: error.message } }
+                  );
+                }
+              }
+              
+            } catch (error) {
+              console.error('Token refresh process failed:', error);
+              process.exit(1);
+            } finally {
+              await client.close();
+            }
+          }
+          
+          refreshToken();
+          EOF
+          
+          # Run token refresh
+          node refresh_token.js
+

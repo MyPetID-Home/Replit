@@ -1,0 +1,37 @@
+title: Pet Tracker App
+description: Advanced pet tracking application with NFC integration
+baseurl: ""
+url: ""
+
+markdown: kramdown
+highlighter: rouge
+theme: minima
+
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+exclude:
+  - node_modules
+  - .github
+  - README.md
+  - LICENSE
+
+collections:
+  pages:
+    output: false
+
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "global-app-layout"
+  - scope:
+      path: "pages"
+    values:
+      layout: "global-app-layout"
+
+sass:
+  sass_dir: assets/css
+  style: compressed

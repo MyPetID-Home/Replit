@@ -1,0 +1,498 @@
+<nav class="nav-container">
+    <div class="nav-content">
+        <a href="{{ '/' | relative_url }}" class="nav-brand">
+            <i data-feather="heart"></i>
+            Pet Tracker
+        </a>
+        
+        <button class="nav-toggle" onclick="toggleMobileNav()">
+            <i data-feather="menu"></i>
+        </button>
+        
+        <ul class="nav-links" id="nav-links">
+            <li>
+                <a href="{{ '/' | relative_url }}" class="nav-link" data-route="/">
+                    <i data-feather="home"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li>
+                <a href="#contact" class="nav-link" data-route="/contact">
+                    <i data-feather="user"></i>
+                    <span>Contact Info</span>
+                </a>
+            </li>
+            <li>
+                <a href="#location" class="nav-link" data-route="/location">
+                    <i data-feather="map-pin"></i>
+                    <span>Location</span>
+                </a>
+            </li>
+            <li>
+                <a href="#medical" class="nav-link" data-route="/medical">
+                    <i data-feather="heart"></i>
+                    <span>Medical Info</span>
+                </a>
+            </li>
+            
+            <!-- Dynamic NFC Tag Info -->
+            <li class="nav-tag-section" id="nav-tag-section" style="display: none;">
+                <div class="nav-tag-info" id="nav-tag-info">
+                    <i data-feather="tag"></i>
+                    <span class="nav-tag-text">No tag connected</span>
+                </div>
+            </li>
+            
+            <!-- Authentication Section -->
+            <li class="nav-auth-section">
+                <div class="nav-auth" id="nav-auth">
+                    <!-- Patreon Login Button -->
+                    <button class="btn btn-outline btn-sm nav-auth-btn" id="patreon-login-btn" onclick="startPatreonAuth()" style="display: none;">
+                        <i data-feather="external-link"></i>
+                        <span>Login with Patreon</span>
+                    </button>
+                    
+                    <!-- User Profile (when authenticated) -->
+                    <div class="nav-user-profile" id="nav-user-profile" style="display: none;">
+                        <div class="nav-user-avatar" id="nav-user-avatar">
+                            <i data-feather="user"></i>
+                        </div>
+                        <div class="nav-user-info">
+                            <div class="nav-user-name" id="nav-user-name">User</div>
+                            <div class="nav-user-status" id="nav-user-status">Free</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline nav-logout-btn" onclick="logout()">
+                            <i data-feather="log-out"></i>
+                        </button>
+                    </div>
+                </div>
+            </li>
+            
+            <!-- Emergency Actions -->
+            <li class="nav-emergency-section">
+                <button class="btn btn-danger btn-sm nav-emergency-btn" onclick="triggerEmergencyAlert()">
+                    <i data-feather="alert-triangle"></i>
+                    <span>Emergency</span>
+                </button>
+            </li>
+        </ul>
+    </div>
+</nav>
+
+<script>
+// Navigation functionality
+function toggleMobileNav() {
+    const navLinks = document.getElementById('nav-links');
+    navLinks.classList.toggle('show');
+}
+
+// Update navigation based on NFC tag connection
+function updateNavigationForTag(tagId) {
+    const tagSection = document.getElementById('nav-tag-section');
+    const tagInfo = document.getElementById('nav-tag-info');
+    const tagText = tagInfo.querySelector('.nav-tag-text');
+    
+    if (tagId) {
+        tagText.textContent = `Tag: ${tagId}`;
+        tagSection.style.display = 'block';
+        
+        // Show authentication options if not authenticated
+        if (!window.app?.auth?.isAuthenticated) {
+            document.getElementById('patreon-login-btn').style.display = 'flex';
+        }
+        
+        // Update navigation links to show they're available
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.remove('nav-disabled');
+        });
+    } else {
+        tagSection.style.display = 'none';
+        
+        // Disable certain navigation links if no tag is connected
+        document.querySelectorAll('.nav-link[data-route="/contact"], .nav-link[data-route="/location"], .nav-link[data-route="/medical"]').forEach(link => {
+            link.classList.add('nav-disabled');
+        });
+    }
+}
+
+// Update navigation based on authentication status
+function updateNavigationForAuth(isAuthenticated, userData) {
+    const loginBtn = document.getElementById('patreon-login-btn');
+    const userProfile = document.getElementById('nav-user-profile');
+    const userName = document.getElementById('nav-user-name');
+    const userStatus = document.getElementById('nav-user-status');
+    const userAvatar = document.getElementById('nav-user-avatar');
+    
+    if (isAuthenticated && userData) {
+        loginBtn.style.display = 'none';
+        userProfile.style.display = 'flex';
+        
+        // Update user info
+        userName.textContent = userData.firstName || userData.fullName || 'User';
+        
+        // Determine user status
+        let status = 'Free';
+        if (userData.memberships && userData.memberships.length > 0) {
+            const activeMembership = userData.memberships.find(m => m.patronStatus === 'active_patron');
+            if (activeMembership) {
+                const amount = activeMembership.currentlyEntitledAmountCents / 100;
+                status = `Patron ($${amount}/mo)`;
+            }
+        }
+        userStatus.textContent = status;
+        
+        // Update avatar if available
+        if (userData.imageUrl) {
+            userAvatar.innerHTML = `<img src="${userData.imageUrl}" alt="User Avatar" class="nav-avatar-img">`;
+        }
+        
+        // Add premium indicators if applicable
+        if (status !== 'Free') {
+            userProfile.classList.add('nav-premium-user');
+        }
+    } else {
+        loginBtn.style.display = window.app?.nfcTagId ? 'flex' : 'none';
+        userProfile.style.display = 'none';
+        userProfile.classList.remove('nav-premium-user');
+    }
+}
+
+// Patreon authentication
+function startPatreonAuth() {
+    if (!window.app?.config?.patreonClientId) {
+        window.app?.showToast('Patreon authentication not configured', 'error');
+        return;
+    }
+    
+    window.app.auth?.loginWithPatreon();
+}
+
+// Logout functionality
+function logout() {
+    if (window.app?.auth) {
+        window.app.auth.logout();
+    }
+}
+
+// Emergency alert trigger
+function triggerEmergencyAlert() {
+    if (!window.app?.nfcTagId) {
+        window.app?.showToast('Please connect your pet tracker first', 'warning');
+        return;
+    }
+    
+    // Show emergency modal
+    const emergencyContent = `
+        <div class="emergency-alert-modal">
+            <h3>🚨 Emergency Alert</h3>
+            <p>This will immediately send an emergency alert with your pet's information and current location.</p>
+            
+            <div class="emergency-actions">
+                <button class="btn btn-danger" onclick="sendEmergencyAlert()">
+                    <i data-feather="alert-triangle"></i>
+                    Send Emergency Alert
+                </button>
+                <button class="btn btn-secondary" onclick="window.app.hideModal()">
+                    Cancel
+                </button>
+            </div>
+            
+            <div class="emergency-info">
+                <p><strong>This will:</strong></p>
+                <ul>
+                    <li>Create a high-priority GitHub issue</li>
+                    <li>Include your pet's contact and medical information</li>
+                    <li>Share your current location if available</li>
+                    <li>Alert emergency contacts</li>
+                </ul>
+            </div>
+        </div>
+    `;
+    
+    window.app?.showModal(emergencyContent, 'Emergency Alert');
+    
+    // Initialize feather icons in modal
+    if (window.feather) {
+        feather.replace();
+    }
+}
+
+// Send emergency alert
+async function sendEmergencyAlert() {
+    if (!window.app) return;
+    
+    window.app.showLoading(true);
+    
+    try {
+        // Get current location if possible
+        let currentLocation = 'Location not available';
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 5000
+                });
+            });
+            currentLocation = `${position.coords.latitude}, ${position.coords.longitude}`;
+        } catch (locationError) {
+            console.error('Failed to get location for emergency:', locationError);
+        }
+        
+        // Prepare emergency data
+        const emergencyData = {
+            type: 'emergency',
+            source: 'navigation',
+            location: currentLocation,
+            details: 'Emergency alert triggered from navigation',
+            timestamp: new Date().toISOString()
+        };
+        
+        // Send through app emergency handler
+        await window.app.handleEmergency(emergencyData);
+        
+        window.app.hideModal();
+        window.app.showToast('Emergency alert sent successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Failed to send emergency alert:', error);
+        window.app.showToast('Failed to send emergency alert: ' + error.message, 'error');
+    } finally {
+        window.app.showLoading(false);
+    }
+}
+
+// Initialize navigation when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Set up authentication state listener
+    if (window.app?.auth) {
+        window.app.auth.onAuthChange(updateNavigationForAuth);
+    }
+    
+    // Close mobile nav when clicking outside
+    document.addEventListener('click', function(event) {
+        const navLinks = document.getElementById('nav-links');
+        const navToggle = document.querySelector('.nav-toggle');
+        
+        if (navLinks.classList.contains('show') && 
+            !navLinks.contains(event.target) && 
+            !navToggle.contains(event.target)) {
+            navLinks.classList.remove('show');
+        }
+    });
+    
+    // Close mobile nav when clicking on a link
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.addEventListener('click', () => {
+            document.getElementById('nav-links').classList.remove('show');
+        });
+    });
+    
+    // Prevent disabled links from being clicked
+    document.addEventListener('click', function(event) {
+        const disabledLink = event.target.closest('.nav-link.nav-disabled');
+        if (disabledLink) {
+            event.preventDefault();
+            window.app?.showToast('Please connect your pet tracker first', 'warning');
+        }
+    });
+    
+    // Update active navigation link based on current route
+    function updateActiveNavLink() {
+        const currentRoute = window.router?.currentPage || '/';
+        document.querySelectorAll('.nav-link').forEach(link => {
+            const route = link.getAttribute('data-route');
+            link.classList.toggle('active', route === currentRoute);
+        });
+    }
+    
+    // Set up router change listener
+    if (window.router) {
+        window.router.onRouteChange = updateActiveNavLink;
+    }
+    
+    // Initial update
+    updateActiveNavLink();
+});
+</script>
+
+<style>
+/* Navigation specific styles */
+.nav-tag-section {
+    border-left: 1px solid var(--border-color);
+    padding-left: 1rem;
+    margin-left: 1rem;
+}
+
+.nav-tag-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--accent-color);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.nav-auth-section {
+    border-left: 1px solid var(--border-color);
+    padding-left: 1rem;
+    margin-left: 1rem;
+}
+
+.nav-auth-btn {
+    min-width: auto;
+    white-space: nowrap;
+}
+
+.nav-user-profile {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.nav-user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.nav-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.nav-user-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.nav-user-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nav-user-status {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.nav-premium-user .nav-user-status {
+    color: var(--accent-color);
+}
+
+.nav-logout-btn {
+    min-width: auto;
+    padding: 0.5rem;
+}
+
+.nav-emergency-section {
+    margin-left: auto;
+}
+
+.nav-emergency-btn {
+    min-width: auto;
+    animation: pulse-danger 2s infinite;
+}
+
+@keyframes pulse-danger {
+    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+
+.nav-link.nav-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.nav-link.nav-disabled:hover {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+/* Emergency modal styles */
+.emergency-alert-modal h3 {
+    color: var(--danger-color);
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.emergency-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin: 1.5rem 0;
+}
+
+.emergency-info {
+    background: rgba(220, 53, 69, 0.1);
+    border: 1px solid var(--danger-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.emergency-info p {
+    color: var(--danger-color);
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.emergency-info ul {
+    color: var(--text-secondary);
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.emergency-info li {
+    margin-bottom: 0.25rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .nav-tag-section,
+    .nav-auth-section {
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+        padding-left: 0;
+        padding-top: 1rem;
+        margin-left: 0;
+        margin-top: 1rem;
+        width: 100%;
+    }
+    
+    .nav-user-profile {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .nav-emergency-section {
+        margin-left: 0;
+        margin-top: 1rem;
+        width: 100%;
+    }
+    
+    .nav-emergency-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .emergency-actions {
+        flex-direction: column;
+    }
+    
+    .emergency-actions .btn {
+        width: 100%;
+    }
+}
+</style>

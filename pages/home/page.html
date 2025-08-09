@@ -1,0 +1,122 @@
+<div class="home-page">
+    <div class="hero-section">
+        <div class="hero-content">
+            <h1>
+                <i data-feather="heart"></i>
+                Welcome to Pet Tracker
+            </h1>
+            <p class="hero-subtitle">Keep your beloved pets safe with advanced NFC tracking technology</p>
+        </div>
+    </div>
+
+    <div class="dashboard-grid" id="dashboard-grid">
+        <!-- Pet Status Card -->
+        <div class="card status-card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i data-feather="activity"></i>
+                    Pet Status
+                </h2>
+                <div class="status-indicator" id="pet-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Unknown</span>
+                </div>
+            </div>
+            <div class="card-content">
+                <div class="pet-info" id="pet-info">
+                    <p>No pet tracker connected. Please scan your pet's NFC tag to get started.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions Card -->
+        <div class="card actions-card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i data-feather="zap"></i>
+                    Quick Actions
+                </h2>
+            </div>
+            <div class="card-content">
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="homePage.updateLocation()">
+                        <i data-feather="map-pin"></i>
+                        Update Location
+                    </button>
+                    <button class="btn btn-secondary" onclick="router.navigateTo('/contact')">
+                        <i data-feather="user"></i>
+                        Edit Contact Info
+                    </button>
+                    <button class="btn btn-secondary" onclick="router.navigateTo('/medical')">
+                        <i data-feather="heart"></i>
+                        Medical Info
+                    </button>
+                    <button class="btn btn-danger" onclick="homePage.reportEmergency()">
+                        <i data-feather="alert-triangle"></i>
+                        Emergency Alert
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity Card -->
+        <div class="card activity-card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i data-feather="clock"></i>
+                    Recent Activity
+                </h2>
+                <button class="btn btn-outline btn-sm" onclick="homePage.refreshActivity()">
+                    <i data-feather="refresh-cw"></i>
+                    Refresh
+                </button>
+            </div>
+            <div class="card-content">
+                <div class="activity-list" id="activity-list">
+                    <p class="text-muted">No recent activity</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Location Summary Card -->
+        <div class="card location-card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i data-feather="map"></i>
+                    Last Known Location
+                </h2>
+                <button class="btn btn-outline btn-sm" onclick="router.navigateTo('/location')">
+                    <i data-feather="external-link"></i>
+                    View Map
+                </button>
+            </div>
+            <div class="card-content">
+                <div class="location-summary" id="location-summary">
+                    <p class="text-muted">No location data available</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NFC Connection Modal -->
+    <div class="connection-prompt" id="connection-prompt" style="display: none;">
+        <div class="connection-content">
+            <h3>Connect Your Pet Tracker</h3>
+            <p>To get started, please scan your pet's NFC tag or enter the tag ID manually.</p>
+            
+            <div class="connection-options">
+                <div class="nfc-scan-area" onclick="homePage.scanNFC()">
+                    <i data-feather="smartphone"></i>
+                    <span>Tap to Scan NFC Tag</span>
+                </div>
+                
+                <div class="divider">or</div>
+                
+                <form class="manual-entry-form" onsubmit="homePage.handleManualEntry(event)">
+                    <input type="text" placeholder="Enter NFC Tag ID" required>
+                    <button type="submit" class="btn btn-primary">Connect</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
